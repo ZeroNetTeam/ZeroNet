@@ -14,7 +14,7 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 # The Android JNI surface (`src/android.rs`): `ZrayNative` natives, the
 # discovery/scan jobs, logcat and file logging. Off by default so the plain C
 # ABI builds and tests without a JVM anywhere in sight.
-jni = ["dep:jni", "dep:zero-discovery", "dep:futures", "dep:serde"]
+jni = ["dep:jni", "dep:zero-discovery", "dep:zero-provision", "dep:futures", "dep:serde"]
 
 [dependencies]
 zero-core = { workspace = true }
@@ -28,6 +28,8 @@ tracing-subscriber = { workspace = true }
 serde_json = { workspace = true }
 jni = { version = "0.21.1", optional = true, default-features = false }
 zero-discovery = { workspace = true, optional = true }
+# The "My server" installer job (`ZrayNative.serverJob`).
+zero-provision = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 

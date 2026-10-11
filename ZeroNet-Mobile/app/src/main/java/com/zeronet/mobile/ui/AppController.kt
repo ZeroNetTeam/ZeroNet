@@ -67,6 +67,17 @@ class AppController(
     val messages = AppMessages()
     val updater: AppUpdater = AppUpdater.get(context)
 
+    /** The "My server" page: set up the person's own server and watch its use. */
+    val myServer = com.zeronet.mobile.ui.myserver.MyServerModel(
+        context = context,
+        scope = scope,
+        run = engine::serverCall,
+        importLink = { link -> engine.import(link).let { it.added + it.duplicates > 0 } },
+        notify = { messages.show(it) },
+        copy = { text, sensitive -> copy(text, sensitive) },
+        startIntent = { platform.startIntent(it) },
+    )
+
     /** Whether the update sheet is showing. */
     var updateSheetOpen by mutableStateOf(false)
 

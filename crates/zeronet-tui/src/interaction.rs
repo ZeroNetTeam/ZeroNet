@@ -26,6 +26,7 @@ pub enum ComponentId {
     NavDashboard,
     NavSubscriptions,
     NavScanner,
+    NavServers,
     NavSettings,
     NavActivity,
     FooterUsage,

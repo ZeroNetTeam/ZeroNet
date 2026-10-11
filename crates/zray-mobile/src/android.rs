@@ -1053,6 +1053,33 @@ pub extern "system" fn Java_com_zeronet_mobile_core_ZrayNative_warpRegister<'loc
     )
 }
 
+/// `serverJob(requestJson, listener): Long`
+///
+/// One request of the "My server" page: look at a server's identity, check a
+/// DNS record, install, read live usage, test MasterDNS, remove. The `op`
+/// field picks it; see `zero_provision::job` for the requests and events.
+#[no_mangle]
+pub extern "system" fn Java_com_zeronet_mobile_core_ZrayNative_serverJob<'local>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    request_json: JString<'local>,
+    listener: JObject<'local>,
+) -> jlong {
+    contained(
+        "serverJob",
+        || 0,
+        || {
+            start_job(
+                &mut env,
+                &request_json,
+                &listener,
+                "serverJob",
+                zero_provision::job::run,
+            )
+        },
+    )
+}
+
 /// `scan(requestJson, listener): Long`
 #[no_mangle]
 pub extern "system" fn Java_com_zeronet_mobile_core_ZrayNative_scan<'local>(

@@ -65,7 +65,7 @@ pub fn transport_label(raw_content: &str) -> Option<String> {
         .and_then(|n| n.as_str())
         .filter(|s| !s.is_empty() && *s != "none");
     let network = match outbound.get("protocol").and_then(|p| p.as_str()) {
-        Some("hysteria2" | "hysteria" | "tuic") => Some("quic"),
+        Some("hysteria2" | "hysteria" | "tuic" | "juicity") => Some("quic"),
         _ => network.or(Some("tcp")),
     }?;
     let network = match network {

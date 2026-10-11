@@ -76,6 +76,11 @@ class ServerStore private constructor(context: Context) :
                 count INTEGER NOT NULL DEFAULT 0
             )""",
         )
+        createForgotten(db)
+    }
+
+    private fun createForgotten(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS forgotten(key TEXT PRIMARY KEY, at INTEGER NOT NULL) WITHOUT ROWID")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
@@ -83,6 +88,7 @@ class ServerStore private constructor(context: Context) :
         if (oldVersion < 2) db.execSQL("ALTER TABLE servers ADD COLUMN last_error TEXT")
         if (oldVersion < 3) db.execSQL("ALTER TABLE servers ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
         if (oldVersion < 4) db.execSQL("ALTER TABLE servers ADD COLUMN fingerprint TEXT NOT NULL DEFAULT ''")
+        if (oldVersion < 5) createForgotten(db)
     }
 
     // ------------------------------------------------------------------ reads
@@ -172,6 +178,8 @@ class ServerStore private constructor(context: Context) :
                     put("fingerprint", s.fingerprint)
                     put("first_seen", now)
                 }
+                // A config the person brings in themselves is wanted again, whatever it did before.
+                if (!s.source.startsWith(Server.SOURCE_FEED_PREFIX)) db.delete("forgotten", "key = ?", arrayOf(s.key))
                 val inserted = db.insertWithOnConflict("servers", null, values, SQLiteDatabase.CONFLICT_IGNORE)
                 if (inserted == -1L) {
                     // Existing row: refresh what the link says, never downgrade a user config to a feed one.
@@ -196,6 +204,8 @@ class ServerStore private constructor(context: Context) :
         db.beginTransaction()
         try {
             if (delayMs >= 0) {
+                // It answers again, so it is no longer forgotten.
+                db.delete("forgotten", "key = ?", arrayOf(key))
                 db.execSQL(
                     "UPDATE servers SET delay_ms = ?, tested_at = ?, alive_count = alive_count + 1, last_error = NULL WHERE key = ?",
                     arrayOf<Any>(delayMs, now, key),
@@ -247,6 +257,46 @@ class ServerStore private constructor(context: Context) :
     /** Rule a server in or out of automatic selection without deleting it. */
     fun setExcluded(key: String, excluded: Boolean) {
         writableDatabase.execSQL("UPDATE servers SET excluded = ? WHERE key = ?", arrayOf<Any>(if (excluded) 1 else 0, key))
+    }
+
+    /**
+     * Delete discovered servers that failed a test, and remember them for
+     * [FORGET_MS] so no search, history or crowd pick brings them back to be
+     * tested again. Configs the person brought in (their own, subscriptions),
+     * favourites and servers they ruled out by hand are never touched. A
+     * server that answers a later test, or that the person imports, is
+     * forgiven at once.
+     */
+    fun forget(keys: Collection<String>) {
+        if (keys.isEmpty()) return
+        val db = writableDatabase
+        val now = System.currentTimeMillis()
+        db.beginTransaction()
+        try {
+            for (key in keys) {
+                val row = byKey(key)
+                if (row != null && (row.isUser || row.favorite || row.excluded)) continue
+                db.delete("servers", "key = ?", arrayOf(key))
+                db.delete("history", "key = ?", arrayOf(key))
+                db.insertWithOnConflict(
+                    "forgotten", null,
+                    ContentValues(2).apply { put("key", key); put("at", now) },
+                    SQLiteDatabase.CONFLICT_REPLACE,
+                )
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** Keys of servers forgotten in the last [FORGET_MS]; older ones are dropped and may be tried again. */
+    fun forgottenKeys(): Set<String> {
+        val db = writableDatabase
+        db.delete("forgotten", "at < ?", arrayOf((System.currentTimeMillis() - FORGET_MS).toString()))
+        val out = HashSet<String>()
+        db.rawQuery("SELECT key FROM forgotten", null).use { c -> while (c.moveToNext()) out += c.getString(0) }
+        return out
     }
 
     fun delete(keys: Collection<String>) {
@@ -349,7 +399,9 @@ class ServerStore private constructor(context: Context) :
 
     companion object {
         private const val DB_NAME = "servers.db"
-        private const val DB_VERSION = 4
+        private const val DB_VERSION = 5
+        /** How long a server that failed its test stays forgotten. */
+        const val FORGET_MS = 7L * 24 * 60 * 60 * 1000
         const val MAX_DISCOVERED = 2000
 
         /** Faster answers earn more; any success earns at least 1. */

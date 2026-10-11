@@ -78,6 +78,7 @@ import com.zeronet.mobile.ui.components.ProgressRing
 import com.zeronet.mobile.ui.components.RowShape
 import com.zeronet.mobile.ui.components.Segmented
 import com.zeronet.mobile.ui.components.TonalButton
+import com.zeronet.mobile.ui.components.ZeroCard
 import com.zeronet.mobile.ui.components.ZeroTextField
 import com.zeronet.mobile.ui.icons.ZeroIcons
 import com.zeronet.mobile.ui.model.CountryGroup
@@ -131,6 +132,8 @@ data class ServersActions(
     val onDetails: (Server) -> Unit = {},
     val onAdd: () -> Unit = {},
     val onRemoveSubscription: (Subscription) -> Unit = {},
+    /** Open the "My server" page. */
+    val onMyServer: () -> Unit = {},
 )
 
 private fun matches(s: Server, q: String, locale: Locale): Boolean {
@@ -196,6 +199,9 @@ fun ServersScreen(state: ServersState, actions: ServersActions, modifier: Modifi
                         )
                     }
                     LargeTitle(stringResource(R.string.tab_servers), subtitle = subtitle)
+                }
+                item(key = "my-server", contentType = "my-server") {
+                    MyServerCard(actions.onMyServer)
                 }
                 if (state.servers.isEmpty()) {
                     item(key = "empty", contentType = "empty") {
@@ -635,6 +641,26 @@ private fun EmptyServers(refreshing: Boolean, onFind: () -> Unit, onAdd: () -> U
         )
         Spacer(Modifier.height(8.dp))
         TonalButton(stringResource(R.string.servers_add_title), onAdd, icon = ZeroIcons.Plus, container = androidx.compose.ui.graphics.Color.Transparent)
+    }
+}
+
+/** The way into the "My server" page: set up your own server in a few minutes. */
+@Composable
+private fun MyServerCard(onClick: () -> Unit) {
+    val c = ZeroTheme.colors
+    ZeroCard(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        onClick = onClick,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(ZeroIcons.Shield, null, tint = c.accent, modifier = Modifier.size(24.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.ms_card_title), style = MaterialTheme.typography.titleSmall, color = c.text)
+                Text(stringResource(R.string.ms_card_body), style = MaterialTheme.typography.bodySmall, color = c.muted)
+            }
+            Icon(ZeroIcons.ChevronEnd, null, tint = c.muted)
+        }
     }
 }
 

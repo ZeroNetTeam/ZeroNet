@@ -32,6 +32,7 @@ struct Harness {
     subscriptions: Vec<SubscriptionRecord>,
     modal_state: ModalState,
     active_tab: ActiveTab,
+    servers: zeronet_tui::servers::ServersState,
     selected_config_idx: usize,
     latency_history: Vec<f64>,
     marked: std::collections::HashSet<i64>,
@@ -70,6 +71,7 @@ impl Harness {
             subscriptions: Vec::new(),
             modal_state: ModalState::None,
             active_tab: ActiveTab::Dashboard,
+            servers: Default::default(),
             selected_config_idx: 0,
             latency_history: vec![42.0, 51.0, 38.0, 77.0, 45.0],
             marked: std::collections::HashSet::new(),
@@ -102,6 +104,7 @@ impl Harness {
             settings: &self.settings,
             stats: &self.stats,
             active_tab: self.active_tab,
+            servers: &self.servers,
             configs: &self.configs,
             subscriptions: &self.subscriptions,
             selected_config_idx: self.selected_config_idx,
@@ -159,6 +162,7 @@ impl Harness {
                     settings: &self.settings,
                     stats: &self.stats,
                     active_tab: self.active_tab,
+                    servers: &self.servers,
                     configs: &self.configs,
                     subscriptions: &self.subscriptions,
                     selected_config_idx: self.selected_config_idx,
@@ -545,6 +549,7 @@ fn no_screen_uses_a_glyph_whose_width_terminals_disagree_on() {
         ActiveTab::Dashboard,
         ActiveTab::Subscriptions,
         ActiveTab::IpScanner,
+        ActiveTab::Servers,
         ActiveTab::Activity,
         ActiveTab::Settings,
     ] {
@@ -1573,6 +1578,7 @@ fn the_opening_slit_is_painted_as_a_lit_bar() {
                 settings: &h.settings,
                 stats: &h.stats,
                 active_tab: h.active_tab,
+                servers: &h.servers,
                 configs: &h.configs,
                 subscriptions: &h.subscriptions,
                 selected_config_idx: 0,
@@ -2491,6 +2497,7 @@ fn a_live_session_shows_its_protocol_clock_and_speed_graphs() {
                 settings: &h.settings,
                 stats: &h.stats,
                 active_tab: ActiveTab::Dashboard,
+                servers: &h.servers,
                 configs: &h.configs,
                 subscriptions: &h.subscriptions,
                 selected_config_idx: 0,
@@ -3152,4 +3159,211 @@ fn the_connection_test_says_where_the_path_breaks_in_plain_words() {
     // A small terminal still gets a dialog that fits.
     let small = h.draw(80, 24);
     assert!(small.contains("CONNECTION TEST"));
+}
+
+fn sample_server() -> zero_provision::record::ServerRecord {
+    use zero_provision::record::{MasterDns, Reality, ServerRecord, Service, User};
+    use zero_provision::ssh::HostKey;
+    ServerRecord {
+        version: 1,
+        id: "srv1".into(),
+        name: "My server".into(),
+        host: "203.0.113.7".into(),
+        ssh_port: 22,
+        ssh_user: "root".into(),
+        host_key: HostKey {
+            fingerprint: "SHA256:abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG".into(),
+            algorithm: "ssh-ed25519".into(),
+        },
+        ssh_key: Some("KEY".into()),
+        os: "Ubuntu 24.04".into(),
+        zray_version: "0.3.0".into(),
+        management_port: 31000,
+        verified_download: true,
+        services: vec![
+            Service::Reality(Reality {
+                tag: "reality".into(),
+                port: 443,
+                sni: "www.microsoft.com".into(),
+                public_key: "pk".into(),
+                short_id: "ab12".into(),
+                users: vec![User {
+                    name: "Main".into(),
+                    id: "11111111-1111-4111-8111-111111111111".into(),
+                }],
+            }),
+            Service::MasterDns(MasterDns {
+                domain: "t.example.com".into(),
+                ns_host: "ns.example.com".into(),
+                method: 5,
+                key: "0123456789abcdef0123456789abcdef".into(),
+                release: "v1".into(),
+            }),
+        ],
+        created: 0,
+    }
+}
+
+#[test]
+fn my_server_page_screens_render_with_their_words() {
+    use zero_provision::install::{Note, Preset, Step};
+    use zero_provision::ssh::HostKey;
+    use zeronet_tui::servers::{
+        Checked, DnsStatus, Form, ProgressView, Screen, ServersState, StepState,
+    };
+
+    let key = HostKey {
+        fingerprint: "SHA256:abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG".into(),
+        algorithm: "ssh-ed25519".into(),
+    };
+    let checked = Checked {
+        address: "203.0.113.7".into(),
+        port: 22,
+        user: "root".into(),
+        domain: Some("t.example.com".into()),
+        key: None,
+    };
+    let form = Form {
+        password: "hunter2".into(),
+        masterdns: true,
+        domain: "t.example.com".into(),
+        ..Form::default()
+    };
+    let record = sample_server();
+
+    let cases: Vec<(&str, Screen, &[&str])> = vec![
+        (
+            "list",
+            Screen::List,
+            &["Rent a small server", "no addresses"],
+        ),
+        (
+            "form",
+            Screen::Form(form.clone()),
+            &["Server address", "•••••••", "MasterDnsVPN", "Tunnel domain"],
+        ),
+        (
+            "identity",
+            Screen::Identity {
+                form: form.clone(),
+                checked: checked.clone(),
+                key: key.clone(),
+            },
+            &[
+                "SHA256:abcdefghijklmnopqrstuvwxyz",
+                "Nothing secret has been sent yet",
+            ],
+        ),
+        (
+            "dns",
+            Screen::Dns {
+                form: form.clone(),
+                checked: checked.clone(),
+                key: key.clone(),
+                records: zero_provision::guide::delegation_records(
+                    "t.example.com",
+                    "203.0.113.7".parse().unwrap(),
+                ),
+                status: DnsStatus::Wrong,
+            },
+            &["Cloudflare", "GREY", "ns.example.com", "not to this server"],
+        ),
+        (
+            "progress",
+            Screen::Progress(ProgressView {
+                steps: vec![
+                    (Step::Check, None, StepState::Done),
+                    (Step::Download, Some(Preset::Reality), StepState::Running),
+                ],
+                of: 8,
+                detail: "Downloading 4 MB".into(),
+                failed: None,
+            }),
+            &[
+                "Checking the server",
+                "Downloading and verifying (REALITY)",
+                "Downloading 4 MB",
+            ],
+        ),
+        (
+            "result",
+            Screen::Result {
+                record: Box::new(record.clone()),
+                notes: vec![Note::ProviderFirewall {
+                    tcp: vec![443],
+                    udp: vec![53],
+                }],
+                shown: 0,
+            },
+            &["is running", "vless://", "hosting provider"],
+        ),
+        (
+            "confirm",
+            Screen::ConfirmRemove {
+                id: "srv1".into(),
+                typed: "rem".into(),
+            },
+            &["Type  remove", "rem"],
+        ),
+    ];
+    for (name, screen, expected) in cases {
+        let mut h = Harness::new();
+        h.active_tab = ActiveTab::Servers;
+        h.servers = ServersState::new(vec![record.clone()]);
+        if name == "list" {
+            h.servers = ServersState::default();
+        }
+        h.servers.screen = screen;
+        let frame = h.draw(130, 40);
+        dump(&format!("servers_{name}"), &frame);
+        for word in expected {
+            assert!(frame.contains(word), "{name}: missing {word:?} in\n{frame}");
+        }
+        assert!(
+            !frame.contains("hunter2"),
+            "{name}: the password is on screen"
+        );
+    }
+
+    // The server page: figures per service, counts only.
+    let mut h = Harness::new();
+    h.active_tab = ActiveTab::Servers;
+    h.servers = ServersState::new(vec![record]);
+    h.servers.screen = Screen::Server {
+        id: "srv1".into(),
+        shown: 0,
+    };
+    h.servers.on_event(zeronet_tui::servers::Event::Usage(
+        "srv1".into(),
+        Ok(zero_provision::manage::Usage {
+            window_secs: 300,
+            inbounds: vec![zero_provision::manage::InboundUsage {
+                tag: "reality".into(),
+                sessions: 4,
+                devices_now: 3,
+                devices_recent: 5,
+                uplink: 2_000_000,
+                downlink: 90_000_000,
+            }],
+        }),
+    ));
+    let frame = h.draw(130, 40);
+    dump("servers_server", &frame);
+    assert!(frame.contains("connected now 3"), "{frame}");
+    assert!(frame.contains("in the last 5 min 5"), "{frame}");
+    assert!(frame.contains("VLESS + REALITY"));
+    assert!(frame.contains("no addresses are kept"));
+
+    // The big code on its own: drawn with block characters, text hidden.
+    h.servers.show_qr = true;
+    let frame = h.draw(130, 50);
+    dump("servers_qr", &frame);
+    assert!(
+        frame.contains('█') || frame.contains('▀') || frame.contains('▄'),
+        "{frame}"
+    );
+    assert!(!frame.contains("Live use"));
+    // Too small: says so instead of drawing a code nobody can scan.
+    let small = h.draw(100, 30);
+    assert!(small.contains("too small for the code"), "{small}");
 }

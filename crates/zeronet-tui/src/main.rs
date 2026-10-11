@@ -56,6 +56,7 @@ use zeronet_tui::toast::{ToastKind, ToastManager};
 use zeronet_tui::ui::{ActiveTab, UiRenderer};
 
 mod app_finder;
+mod app_servers;
 mod app_tasks;
 mod app_test;
 mod app_update;
@@ -399,6 +400,8 @@ struct App<'a> {
     /// Revision of the last daemon transition already reported to the user.
     reported_revision: u64,
     active_tab: ActiveTab,
+    /// The "My server" page: the servers set up from here and what is open.
+    servers: zeronet_tui::servers::ServersState,
     configs: Vec<ConfigRecord>,
     subscriptions: Vec<SubscriptionRecord>,
     selected_config_idx: usize,
@@ -744,6 +747,7 @@ impl<'a> App<'a> {
             stats,
             reported_revision: 0,
             active_tab: ActiveTab::Dashboard,
+            servers: Self::load_servers(db),
             configs,
             subscriptions: db.get_subscriptions()?,
             selected_config_idx: 0,
@@ -1443,6 +1447,7 @@ impl<'a> App<'a> {
             settings: &self.settings,
             stats: &self.stats,
             active_tab: self.active_tab,
+            servers: &self.servers,
             configs: &self.configs,
             subscriptions: &self.subscriptions,
             selected_config_idx: self.selected_config_idx,
@@ -1807,6 +1812,32 @@ impl<'a> App<'a> {
                 }
             }
             return Ok(());
+        }
+
+        // The "My server" page reads its own keys (its form is text fields and
+        // checkboxes). Ctrl+C still quits, and keys it does not use fall
+        // through to the global ones (tab switching, quit).
+        if self.active_tab == ActiveTab::Servers
+            && !self.modal_state.is_active()
+            && !self.filter_focused
+            && !(key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
+        {
+            if self.servers.typing()
+                && key.code == KeyCode::Char('v')
+                && key.modifiers.contains(KeyModifiers::CONTROL)
+            {
+                match self.clipboard.paste() {
+                    Ok(text) => self.servers.paste(text.trim()),
+                    Err(e) => self.toasts.warning(e),
+                }
+                self.dirty = true;
+                return Ok(());
+            }
+            if let Some(effects) = self.servers.on_key(key) {
+                self.dirty = true;
+                self.run_server_effects(effects);
+                return Ok(());
+            }
         }
 
         let context = if self.filter_focused {
@@ -3417,6 +3448,15 @@ impl App<'_> {
             return Ok(());
         }
 
+        if self.active_tab == ActiveTab::Servers
+            && !self.modal_state.is_active()
+            && self.servers.typing()
+        {
+            self.servers.paste(trimmed);
+            self.dirty = true;
+            return Ok(());
+        }
+
         // Whatever has keyboard focus takes the paste as literal input. With
         // bracketed paste on, this is the only route a terminal paste takes,
         // so a field that is not handled here would import the text as a
@@ -4387,6 +4427,7 @@ impl App<'_> {
             ComponentId::NavDashboard => self.active_tab = ActiveTab::Dashboard,
             ComponentId::NavSubscriptions => self.active_tab = ActiveTab::Subscriptions,
             ComponentId::NavScanner => self.active_tab = ActiveTab::IpScanner,
+            ComponentId::NavServers => self.active_tab = ActiveTab::Servers,
             ComponentId::NavSettings => self.active_tab = ActiveTab::Settings,
             ComponentId::NavActivity | ComponentId::FooterUsage => {
                 self.active_tab = ActiveTab::Activity;
@@ -5458,7 +5499,8 @@ fn next_tab(tab: ActiveTab) -> ActiveTab {
     match tab {
         ActiveTab::Dashboard => ActiveTab::Subscriptions,
         ActiveTab::Subscriptions => ActiveTab::IpScanner,
-        ActiveTab::IpScanner => ActiveTab::Activity,
+        ActiveTab::IpScanner => ActiveTab::Servers,
+        ActiveTab::Servers => ActiveTab::Activity,
         ActiveTab::Activity => ActiveTab::Settings,
         ActiveTab::Settings => ActiveTab::Dashboard,
     }
@@ -5469,7 +5511,8 @@ fn prev_tab(tab: ActiveTab) -> ActiveTab {
         ActiveTab::Dashboard => ActiveTab::Settings,
         ActiveTab::Subscriptions => ActiveTab::Dashboard,
         ActiveTab::IpScanner => ActiveTab::Subscriptions,
-        ActiveTab::Activity => ActiveTab::IpScanner,
+        ActiveTab::Servers => ActiveTab::IpScanner,
+        ActiveTab::Activity => ActiveTab::Servers,
         ActiveTab::Settings => ActiveTab::Activity,
     }
 }
@@ -5892,7 +5935,7 @@ mod tests {
         // Every page is visited exactly once per lap, in sidebar order.
         let mut tab = ActiveTab::Dashboard;
         let mut seen = vec![tab];
-        for _ in 0..4 {
+        for _ in 0..5 {
             tab = next_tab(tab);
             seen.push(tab);
         }
@@ -5902,6 +5945,7 @@ mod tests {
                 ActiveTab::Dashboard,
                 ActiveTab::Subscriptions,
                 ActiveTab::IpScanner,
+                ActiveTab::Servers,
                 ActiveTab::Activity,
                 ActiveTab::Settings,
             ]

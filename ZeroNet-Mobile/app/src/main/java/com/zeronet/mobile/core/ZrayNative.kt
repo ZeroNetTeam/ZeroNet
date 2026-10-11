@@ -53,6 +53,11 @@ object ZrayNative {
     /** `{"proxy": "127.0.0.1:port"?, "direct": bool}` → events `{"t":"step","line"}` and one
      *  `{"t":"done","ok",…}`: gets a free WARP account and finds servers that work through it. */
     @JvmStatic external fun warpRegister(requestJson: String, listener: NativeListener): Long
+    /** One step of the "My server" page, `{"op": …}`: look at a server's identity
+     *  (`fingerprint`), check a DNS record (`dns`), `install`, read live `usage`,
+     *  `probe` MasterDNS, `remove`, or list `configs`. Events end with one
+     *  `{"t":"done","ok",…}`; see zero_provision::job. */
+    @JvmStatic external fun serverJob(requestJson: String, listener: NativeListener): Long
     @JvmStatic external fun cancel(handle: Long)
 
     /** Called from Rust for every outbound socket Zray opens. */

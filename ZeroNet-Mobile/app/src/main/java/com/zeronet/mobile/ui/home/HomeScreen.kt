@@ -69,6 +69,7 @@ import com.zeronet.mobile.ui.components.FlagBadge
 import com.zeronet.mobile.ui.components.IconBadge
 import com.zeronet.mobile.ui.components.ZeroCard
 import com.zeronet.mobile.ui.components.ZeroChip
+import com.zeronet.mobile.ui.effects.ProtocolBannerFx
 import com.zeronet.mobile.ui.icons.ZeroIcons
 import com.zeronet.mobile.ui.model.countryLabel
 import com.zeronet.mobile.ui.model.failReasonText
@@ -141,7 +142,26 @@ fun HomeScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                Spacer(Modifier.height(24.dp))
+                // The protocol that carried the connection, above the globe. Its room is always kept so
+                // the globe does not move when it appears.
+                Box(Modifier.fillMaxWidth().height(80.dp).padding(top = 12.dp, start = 16.dp, end = 16.dp), contentAlignment = Alignment.Center) {
+                    // Pure black is the theme's own: on an AMOLED screen the "black" letters are real black.
+                    val amoled = c.bg == androidx.compose.ui.graphics.Color.Black
+                    val server = (conn as? ConnState.Connected)?.server
+                    val banner = remember(server?.protocol, server?.transport, server?.security, server?.fingerprint, amoled) {
+                        server?.let {
+                            val label = ProtocolBannerFx.label(it.protocol, it.transport, it.security, warp = it.fingerprint.isNotEmpty())
+                            Triple(label, ProtocolBannerFx.look(it.protocol), ProtocolBannerFx.runs(label, it.protocol, amoled))
+                        }
+                    }
+                    AnimatedContent(
+                        targetState = banner,
+                        transitionSpec = { fadeIn(tween(ZeroMotion.ms(220))) togetherWith fadeOut(tween(ZeroMotion.ms(150))) },
+                        label = "protocol-banner",
+                    ) { shown ->
+                        if (shown != null) ProtocolBanner(shown.first, shown.second, shown.third, Modifier.widthIn(max = 560.dp))
+                    }
+                }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     val gaming = state.profile == ConnectionProfile.Gaming
                     ConnectGlobe(

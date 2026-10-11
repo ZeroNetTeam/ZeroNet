@@ -135,6 +135,8 @@ pub(crate) enum BgEvent {
     WarpBoot(Result<crate::app_warp::WarpDone, String>),
     /// A check of the connection test started or finished.
     TestProgress(zero_discovery::selftest::Check),
+    /// A task of the "My server" page reported back.
+    Server(zeronet_tui::servers::Event),
 }
 
 /// Bookkeeping for the jobs above, kept in one field of the app.
@@ -482,6 +484,7 @@ impl App<'_> {
                 // neither starts while the user's traffic is moving.
                 self.maybe_probe_health();
                 self.maybe_background_find();
+                self.tick_servers();
                 false
             }
             BgEvent::UpdateDue => {
@@ -514,6 +517,10 @@ impl App<'_> {
             }
             BgEvent::WarpBoot(result) => {
                 self.on_warp_boot(result);
+                true
+            }
+            BgEvent::Server(event) => {
+                self.on_server_event(event);
                 true
             }
             BgEvent::TestProgress(check) => {

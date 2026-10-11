@@ -75,8 +75,15 @@ fun protocolLabel(p: String): String = when (p.lowercase(Locale.ROOT)) {
     "ss", "shadowsocks" -> "Shadowsocks"
     "hysteria2", "hy2" -> "Hysteria 2"
     "tuic" -> "TUIC"
+    "juicity" -> "Juicity"
     "anytls" -> "AnyTLS"
     "zerov1", "tide" -> "ZeroV1"
+    "masterdns" -> "MasterDnsVPN"
+    "socks", "socks5" -> "SOCKS5"
+    "wireguard", "wg" -> "WireGuard"
+    "amnezia-wg" -> "AmneziaWG"
+    "warp" -> "WARP"
+    "tor" -> "Tor"
     "" -> "—"
     else -> p
 }

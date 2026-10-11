@@ -123,6 +123,15 @@ class EngineService : Service() {
                 Ipc.DIAGNOSE -> Engine.diagnose()
                 Ipc.WARP_START -> Engine.warpStart()
                 Ipc.WARP_CANCEL -> Engine.warpCancel()
+                Ipc.SERVER_RUN -> json?.let {
+                    val o = JSONObject(it)
+                    val id = o.getString("id")
+                    val replyTo = msg.replyTo
+                    Engine.serverRun(id, o.getJSONObject("req")) { event ->
+                        reply(replyTo, Ipc.SERVER_EVENT, JSONObject().put("id", id).put("e", event).toString())
+                    }
+                }
+                Ipc.SERVER_CANCEL -> json?.let { Engine.serverCancel(it) }
                 Ipc.IMPORT -> {
                     val replyTo = msg.replyTo
                     val text = json.orEmpty()

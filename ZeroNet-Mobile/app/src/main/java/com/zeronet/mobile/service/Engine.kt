@@ -789,6 +789,24 @@ object Engine {
     }
 
     /**
+     * Delete and forget the discovered servers that failed a round of tests
+     * ([results]: key to delay, negative for a failure), so the app stops
+     * trying them again and again. Only a round in which something answered
+     * counts: when nothing does, the phone is more likely offline than every
+     * server dead, and nothing is forgotten. The person's own configs,
+     * favourites and excluded servers are never forgotten (see
+     * [ServerStore.forget]).
+     */
+    private suspend fun forgetDead(results: Map<String, Int>) {
+        if (results.values.none { it >= 0 }) return
+        val dead = results.filterValues { it < 0 }.keys
+        if (dead.isEmpty()) return
+        withContext(Dispatchers.IO) { store.forget(dead) }
+        EngineLog.i("forgot ${dead.size} servers that did not answer")
+        serversChanged.tryEmit(Unit)
+    }
+
+    /**
      * Before searching: test, all at once, what worked on this network
      * before and what worked for other people on it (the crowd rankings),
      * and bring the tunnel up on the first that answers. Usually one of
@@ -806,7 +824,10 @@ object Engine {
         if (links.isEmpty()) return emptySet()
 
         val items = JSONObject(ZrayNative.parseLinks(links.joinToString("\n"))).optJSONArray("items") ?: JSONArray()
+        // A server that failed its test recently is not asked again.
+        val forgotten = withContext(Dispatchers.IO) { store.forgottenKeys() }
         val parsed = List(items.length()) { Server.fromLinkInfo(items.getJSONObject(it), Server.SOURCE_FEED_PREFIX + "crowd") }
+            .filter { it.key !in forgotten }
         // A server already stored keeps its record: its source says whether it is the user's own.
         val stored = withContext(Dispatchers.IO) { store.byKeys(parsed.map { it.key }) }.associateBy { it.key }
         val candidates = parsed.map { stored[it.key] ?: it }.distinctBy { it.key }
@@ -815,8 +836,10 @@ object Engine {
         val byKey = candidates.associateBy { it.key }
         EngineLog.i("trying ${candidates.size} known servers first: ${history.size} from this network's history, ${picks.size} from other users on $crowdName")
 
+        val tested = HashMap<String, Int>()
         testServers(candidates, timeoutMs = 4000, concurrency = candidates.size) { key, delay, error ->
             val server = byKey[key] ?: return@testServers
+            tested[key] = delay
             noteCrowd(server, delay)
             withContext(Dispatchers.IO) {
                 if (delay >= 0 && key !in stored) store.upsert(listOf(server.copy(delayMs = delay)))
@@ -832,6 +855,7 @@ object Engine {
                 reloadPool()
             }
         }
+        forgetDead(tested)
         serversChanged.tryEmit(Unit)
         return parsed.map { it.key }.toSet()
     }
@@ -948,10 +972,13 @@ object Engine {
         val request = JSONObject()
             .put("sources", Sources.toJson(Sources.enabled(settings.disabledSources)))
             .put("cache_dir", File(app.cacheDir, "feeds").apply { mkdirs() }.absolutePath)
+            // The assets dir buildConfig reads: a search also refreshes the
+            // signed domestic-SNI decoy list into it (core: domestic_feed).
+            .put("assets_dir", com.zeronet.mobile.data.GeoAssets.directory(app).absolutePath)
             .put("priority_links", JSONArray(history + frontedVariants(history, userServers, rung?.fronts ?: FRONT_VARIANTS)))
             .put("extra_links", JSONArray(userServers.filter { !it.excluded }.map { it.link }))
-            // Servers the user excluded are skipped even when a feed lists them again.
-            .put("exclude_keys", JSONArray((excludeKeys + withContext(Dispatchers.IO) { store.excludedKeys() }).toList()))
+            // Servers the user excluded, and ones that recently failed their test, are skipped even when a feed lists them again.
+            .put("exclude_keys", JSONArray((excludeKeys + withContext(Dispatchers.IO) { store.excludedKeys() + store.forgottenKeys() }).toList()))
             .put("want_alive", wantAlive(settings.profile))
             .put("max_seconds", rung?.budgetSeconds ?: 75)
             .put("tcp_concurrency", 256).put("tcp_timeout_ms", 1500).put("tcp_stop_after_open", 1500)
@@ -1102,8 +1129,10 @@ object Engine {
         // Prefer servers that suit the profile; if none of them do, any will.
         val candidates = all.filter { suits(it, settings.profile) }.ifEmpty { all }
         val byKey = candidates.associateBy { it.key }
+        val tested = HashMap<String, Int>()
         testServers(candidates.take(200), timeoutMs = 4000, concurrency = 16) { key, delay, error ->
             withContext(Dispatchers.IO) { store.recordResult(key, delay, network, error) }
+            tested[key] = delay
             val server = byKey[key] ?: return@testServers
             if (delay < 0) return@testServers
             pool += Alive(server.copy(delayMs = delay), delay)
@@ -1115,6 +1144,7 @@ object Engine {
                 reloadPool()
             }
         }
+        forgetDead(tested)
         serversChanged.tryEmit(Unit)
     }
 
@@ -1458,6 +1488,7 @@ object Engine {
                 probe()
             }
             withContext(Dispatchers.IO) { results.forEach { (k, d) -> store.recordResult(k, d, network, errors[k]) } }
+            forgetDead(results)
             EngineLog.i("health check: ${results.values.count { it >= 0 }} of ${pool.size} servers answering")
             val survivors = pool.mapNotNull { a -> results[a.server.key]?.takeIf { it >= 0 }?.let { a.copy(delayMs = it) } }
                 .sortedBy { it.delayMs }
@@ -1614,6 +1645,46 @@ object Engine {
                 EngineLog.w("replacement search: ${e.message.orEmpty()}")
             }
         }
+    }
+
+    // ------------------------------------------------------- my server
+
+    private val serverJobs = ConcurrentHashMap<String, Job>()
+
+    /**
+     * Run one request of the "My server" page in the core (see
+     * zero_provision::job) and hand each event to [emit], on the main
+     * thread. The request may hold a password, so it is never logged; the
+     * last event is always a `done`, even when the job could not start.
+     */
+    fun serverRun(id: String, request: JSONObject, emit: (JSONObject) -> Unit) {
+        serverJobs.remove(id)?.cancel()
+        serverJobs[id] = scope.launch(Dispatchers.IO) {
+            var finished = false
+            var cancelled = false
+            try {
+                nativeJob { ZrayNative.serverJob(request.toString(), it) }.collect { e ->
+                    if (e.optString("t") == "done") finished = true
+                    withContext(Dispatchers.Main) { emit(e) }
+                }
+            } catch (e: CancellationException) {
+                cancelled = true
+                throw e
+            } catch (e: Throwable) {
+                EngineLog.w("my server: ${e.javaClass.simpleName}")
+            } finally {
+                serverJobs.remove(id)
+                if (!finished) {
+                    val error = if (cancelled) "cancelled" else "The app's engine did not answer. Try again."
+                    val done = JSONObject().put("t", "done").put("ok", false).put("error", error)
+                    withContext(NonCancellable + Dispatchers.Main) { emit(done) }
+                }
+            }
+        }
+    }
+
+    fun serverCancel(id: String) {
+        serverJobs.remove(id)?.cancel()
     }
 
     // ------------------------------------------------------------------ warp
@@ -2107,6 +2178,7 @@ object Engine {
                 val request = JSONObject()
                     .put("sources", Sources.toJson(Sources.enabled(next.disabledSources)))
                     .put("cache_dir", File(app.cacheDir, "feeds").apply { mkdirs() }.absolutePath)
+                    .put("assets_dir", com.zeronet.mobile.data.GeoAssets.directory(app).absolutePath)
                     .put("priority_links", JSONArray())
                     .put("extra_links", JSONArray())
                     .put("exclude_keys", JSONArray())
@@ -2144,16 +2216,19 @@ object Engine {
             if (servers.isEmpty()) return@launch
             val network = NetworkIdentity.current(app)
             var done = 0
+            val tested = HashMap<String, Int>()
             testProgress.value = 0 to servers.size
             var lastEmit = 0L
             try {
                 testServers(servers, timeoutMs = 4000, concurrency = 16) { key, delay, error ->
                     withContext(Dispatchers.IO) { store.recordResult(key, delay, network, error) }
+                    tested[key] = delay
                     done++
                     testProgress.value = done to servers.size
                     val now = System.currentTimeMillis()
                     if (now - lastEmit > 500) { serversChanged.tryEmit(Unit); lastEmit = now }
                 }
+                forgetDead(tested)
             } finally {
                 testProgress.value = null
                 serversChanged.tryEmit(Unit)

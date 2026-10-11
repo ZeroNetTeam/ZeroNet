@@ -67,6 +67,7 @@ fun ServersRoute() {
                 onDetails = { detailKey = it.key },
                 onAdd = { importText = null; importOpen = true },
                 onRemoveSubscription = { controller.engine.removeSubscription(it.id) },
+                onMyServer = { controller.myServer.show() },
             )
         },
     )
@@ -106,6 +107,8 @@ fun ServersRoute() {
         onWarp = { importOpen = false; warpOpen = true },
         onDismiss = { importOpen = false },
     )
+
+    com.zeronet.mobile.ui.myserver.MyServerSheet(controller.myServer)
 
     WarpSheet(
         visible = warpOpen,

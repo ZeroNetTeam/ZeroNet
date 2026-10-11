@@ -46,7 +46,7 @@ data class Server(
      */
     val kind: ServerKind
         get() = when {
-            protocol == "hysteria2" || protocol == "tuic" -> ServerKind.Quic
+            protocol == "hysteria2" || protocol == "tuic" || protocol == "juicity" -> ServerKind.Quic
             transport == "xhttp" && hasParam(link, "extra") -> ServerKind.Split
             security == "reality" -> ServerKind.Direct
             transport in CDN_TRANSPORTS && security == "tls" -> ServerKind.Cdn

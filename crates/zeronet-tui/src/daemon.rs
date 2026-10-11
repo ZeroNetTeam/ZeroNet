@@ -882,10 +882,19 @@ pub fn prepare_runnable_config_with(raw_config: &str, options: &EngineOptions) -
         "vmess://",
         "ss://",
         "hysteria2://",
+        "hy2://",
         "tuic://",
+        "juicity://",
         "anytls://",
         "zerov1://",
         "tide://",
+        "masterdns://",
+        "socks5://",
+        "socks://",
+        "tor://",
+        "wireguard://",
+        "wg://",
+        "warp://",
     ]
     .iter()
     .any(|scheme| trimmed.starts_with(scheme));

@@ -169,6 +169,7 @@ class SettingsTest {
         assertEquals(ServerKind.Other, base.copy(transport = "tcp", security = "tls").kind)
         assertEquals(ServerKind.Quic, base.copy(protocol = "hysteria2", transport = "quic", security = "tls").kind)
         assertEquals(ServerKind.Quic, base.copy(protocol = "tuic", transport = "quic", security = "tls").kind)
+        assertEquals(ServerKind.Quic, base.copy(protocol = "juicity", transport = "quic", security = "tls").kind)
         // XHTTP with an `extra` block is the split-path family, whatever its security.
         val xhttp = base.copy(transport = "xhttp", security = "tls")
         assertEquals(ServerKind.Split, xhttp.copy(link = "vless://id@h:443?type=xhttp&extra=%7B%7D#n").kind)

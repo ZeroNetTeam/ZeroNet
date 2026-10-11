@@ -611,8 +611,13 @@ mod unix_impl {
         // terminal client in the loop.
         let exe = match std::env::var_os("ZERONET_TUN_HELPER") {
             Some(path) => PathBuf::from(path),
-            None => std::env::current_exe()
-                .map_err(|e| ElevationError::Failed(format!("cannot locate this binary: {e}")))?,
+            None => helper_path(
+                std::env::current_exe().map_err(|e| {
+                    ElevationError::Failed(format!("cannot locate this binary: {e}"))
+                })?,
+                std::env::var_os("APPDIR"),
+                std::env::var_os("APPIMAGE"),
+            ),
         };
 
         let mut command = match program {
@@ -675,7 +680,7 @@ mod unix_impl {
         let stream = match accepted {
             Ok(stream) => stream,
             Err(_) => {
-                let reason = helper_failure(&mut child);
+                let reason = helper_failure(&mut child, &exe);
                 let _ = child.kill();
                 let _ = child.wait();
                 let _ = std::fs::remove_file(&socket_path);
@@ -731,7 +736,7 @@ mod unix_impl {
     }
 
     /// Whatever the helper managed to say before failing.
-    fn helper_failure(child: &mut Child) -> ElevationError {
+    fn helper_failure(child: &mut Child, exe: &std::path::Path) -> ElevationError {
         let mut message = String::new();
         if let Some(mut stderr) = child.stderr.take() {
             use std::io::Read;
@@ -747,9 +752,10 @@ mod unix_impl {
             return ElevationError::Rejected;
         }
         if message.is_empty() {
-            ElevationError::Failed(
-                "the privileged helper didn't start. Check that sudo works for this account".into(),
-            )
+            ElevationError::Failed(format!(
+                "the privileged helper didn't start ({}). Check that sudo works for this account",
+                exe.display()
+            ))
         } else {
             // Only the last line: sudo's lecture is several lines of advice
             // that would bury the actual reason.
@@ -1208,6 +1214,30 @@ pub fn handover_socket_path() -> String {
         .into_owned()
 }
 
+/// The program that `sudo` should start as the privileged helper.
+///
+/// Normally this very binary. Inside an AppImage that is wrong: the binary is
+/// on a FUSE mount (`/tmp/.mount_…`) that only the user who started the
+/// AppImage may read, so root cannot execute it and `sudo` fails before the
+/// helper starts. The `.AppImage` file itself is an ordinary file root can
+/// run; it mounts its own copy and starts the same program. `appdir` and
+/// `appimage` are the `APPDIR` and `APPIMAGE` variables the AppImage runtime
+/// sets.
+#[cfg(unix)]
+fn helper_path(
+    current: std::path::PathBuf,
+    appdir: Option<std::ffi::OsString>,
+    appimage: Option<std::ffi::OsString>,
+) -> std::path::PathBuf {
+    let inside = appdir
+        .as_deref()
+        .is_some_and(|dir| !dir.is_empty() && current.starts_with(dir));
+    match appimage.map(std::path::PathBuf::from) {
+        Some(file) if inside && file.is_absolute() && file.is_file() => file,
+        _ => current,
+    }
+}
+
 /// Locate an executable on `PATH`.
 #[cfg(unix)]
 fn which(program: &str) -> Option<std::path::PathBuf> {
@@ -1398,5 +1428,46 @@ mod tests {
     fn which_finds_a_program_that_is_certainly_there() {
         assert!(which("sh").is_some());
         assert!(which("definitely-not-a-real-program-zzz").is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_appimage_starts_its_helper_from_the_appimage_file() {
+        let dir = std::env::temp_dir().join(format!("zn-helper-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("ZeroNet.AppImage");
+        std::fs::write(&file, b"x").unwrap();
+        let mount = std::ffi::OsString::from("/tmp/.mount_ZeroNeAbc123");
+        let inside = std::path::PathBuf::from("/tmp/.mount_ZeroNeAbc123/usr/bin/zeronet-tui");
+        let outside = std::path::PathBuf::from("/home/me/Downloads/zeronet-tui");
+        let appimage = Some(file.clone().into_os_string());
+        // From the mount: the file, which root can run.
+        assert_eq!(
+            helper_path(inside.clone(), Some(mount.clone()), appimage.clone()),
+            file
+        );
+        // A plain binary is itself, even if the variables are around.
+        assert_eq!(
+            helper_path(outside.clone(), Some(mount.clone()), appimage.clone()),
+            outside
+        );
+        // No AppImage, a missing file or an empty APPDIR all keep the binary.
+        assert_eq!(
+            helper_path(inside.clone(), Some(mount.clone()), None),
+            inside
+        );
+        assert_eq!(
+            helper_path(
+                inside.clone(),
+                Some(mount),
+                Some("/nonexistent/x.AppImage".into())
+            ),
+            inside
+        );
+        assert_eq!(
+            helper_path(inside.clone(), Some("".into()), appimage),
+            inside
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

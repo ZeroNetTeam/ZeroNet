@@ -319,6 +319,44 @@ The keys are made on the device and only their public halves are sent. `link`
 holds the private keys: import it, never log it. `fingerprint` is a hash of the
 public keys, safe to show; the key-decryption animation settles on it.
 
+## ServerRequest (serverJob)
+
+One request of the "My server" page: the app sets up the person's own server
+over SSH and reads how many devices use it. The request is one object whose
+`op` picks the step; the full list, with every field, is in
+`crates/zero-provision/src/job.rs`.
+
+```json
+{"op":"fingerprint","host":"203.0.113.7","port":22}
+{"op":"dns","ns_host":"ns.example.com","server":"203.0.113.7"}
+{"op":"install","host":"…","port":22,"user":"root","password":"…","trust":{"fingerprint":"SHA256:…","algorithm":"ssh-ed25519"},"name":"My server","reality":true,"xhttp":false,"masterdns_domain":"t.example.com"}
+{"op":"usage","record":{…}}   {"op":"remove","record":{…}}   {"op":"probe","record":{…}}   {"op":"configs","record":{…}}
+```
+
+Events: `install` and `remove` emit `{"t":"step","step":"download","preset":"reality","number":3,"of":8}`,
+`{"t":"detail","text":"…"}` and `{"t":"removed","step":"files"}` as they go; every
+request ends with exactly one `{"t":"done","ok":true,…}` (`fingerprint`,
+`status`, `record` + `notes` + `configs`, `usage`, `answered`) or
+`{"t":"done","ok":false,"error":"<a sentence for the person>"}`.
+
+`reality` installs VLESS + Vision over REALITY and `xhttp` installs VLESS over
+XHTTP inside REALITY; they share one key pair and one user, and each gets its own
+port (443 and 8443 by default, moved when taken). At least one of `reality`,
+`xhttp` or `masterdns_domain` is needed. A record's `services` use the kinds
+`reality`, `xhttp` and `master_dns`; the configs derived from it name their
+`service` as `reality`, `xhttp` or `masterdns`.
+
+The app keeps the `record` (it holds the app's own SSH key, so it lives in
+private, non-backed-up storage) and passes it back in later requests; the core
+stores nothing. The password is used for that one request and is never logged.
+A server that only accepts SSH keys is logged into with `private_key` (the key's
+text: OpenSSH, PEM, PKCS#8 or PuTTY) and, when it has one, `key_passphrase`, sent
+instead of `password`; they are used for that request only, never stored or
+logged, and a text that is not a private key (a `.pub` file, say) is refused with
+a sentence before any connection is made. `password` is still accepted for
+`password` and `keyboard-interactive` logins.
+`usage` carries counts only: no address of any client is ever reported.
+
 ## Runtime notes (Rust side)
 
 - **`init`** logs to `dataDir/zray.log`, rotated to `zray.log.1` at 2 MB, and

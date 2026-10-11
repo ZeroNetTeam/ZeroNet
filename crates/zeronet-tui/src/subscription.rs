@@ -103,7 +103,9 @@ fn endpoint_of(protocol: &zero_config::OutboundProtocol) -> (String, u16) {
         zero_config::OutboundProtocol::Vmess(m) => (m.address.to_string(), m.port),
         zero_config::OutboundProtocol::Hysteria2(h) => (h.address.to_string(), h.port),
         zero_config::OutboundProtocol::Tuic(t) => (t.address.to_string(), t.port),
+        zero_config::OutboundProtocol::Juicity(j) => (j.address.to_string(), j.port),
         zero_config::OutboundProtocol::AnyTls(a) => (a.address.to_string(), a.port),
+        zero_config::OutboundProtocol::Socks(k) => (k.address.to_string(), k.port),
         _ => ("proxy".into(), 443),
     }
 }

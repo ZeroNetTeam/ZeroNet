@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
@@ -137,6 +138,25 @@ class EngineClient private constructor(private val context: Context) {
     fun warpStart() = send(Ipc.WARP_START, null)
     fun warpCancel() = send(Ipc.WARP_CANCEL, null)
 
+    private val serverCalls = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.channels.SendChannel<JSONObject>>()
+    private val serverCallIds = java.util.concurrent.atomic.AtomicLong()
+
+    /**
+     * Run one request of the "My server" page in the engine and stream its
+     * events (see zero_provision::job). The flow ends after the `done` event;
+     * cancelling the collector cancels the request. The request may hold a
+     * password: it goes to the :vpn process in memory and is never written
+     * anywhere.
+     */
+    fun serverCall(request: JSONObject): kotlinx.coroutines.flow.Flow<JSONObject> = kotlinx.coroutines.flow.callbackFlow {
+        val id = "s${serverCallIds.incrementAndGet()}"
+        serverCalls[id] = channel
+        this@EngineClient.send(Ipc.SERVER_RUN, JSONObject().put("id", id).put("req", request).toString())
+        awaitClose {
+            if (serverCalls.remove(id) != null) this@EngineClient.send(Ipc.SERVER_CANCEL, id)
+        }
+    }
+
     /** Tell the engine settings changed (applies LAN/routing changes to a live connection). */
     fun pushSettings() = send(Ipc.SETTINGS, SettingsStore.get(context).current.toJson().toString())
 
@@ -192,6 +212,17 @@ class EngineClient private constructor(private val context: Context) {
                     if (o.optBoolean("done")) null else o.optInt("d") to o.optInt("t")
                 }
                 Ipc.RACE -> json?.let { _race.value = Ipc.raceFromJson(JSONObject(it)) }
+                Ipc.SERVER_EVENT -> json?.let {
+                    val o = JSONObject(it)
+                    val id = o.optString("id")
+                    val event = o.optJSONObject("e") ?: return
+                    val channel = serverCalls[id] ?: return
+                    channel.trySend(event)
+                    if (event.optString("t") == "done") {
+                        serverCalls.remove(id)
+                        channel.close()
+                    }
+                }
                 Ipc.WARP -> json?.let { _warp.value = Ipc.warpFromJson(it) }
                 Ipc.DIAGNOSIS -> json?.let { _diagnosis.value = Ipc.diagnosisFromJson(it) }
                 Ipc.IMPORT_RESULT -> json?.let { pendingImport?.complete(Ipc.importFromJson(it)); pendingImport = null }

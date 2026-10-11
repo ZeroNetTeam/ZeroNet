@@ -39,6 +39,7 @@ pub enum ActiveTab {
     Dashboard,
     Subscriptions,
     IpScanner,
+    Servers,
     Settings,
     Activity,
 }
@@ -64,6 +65,8 @@ pub struct UiRenderer<'a> {
     pub settings: &'a AppSettings,
     pub stats: &'a DaemonStats,
     pub active_tab: ActiveTab,
+    /// The "My server" page: servers the person set up, and the screen open.
+    pub servers: &'a crate::servers::ServersState,
     pub configs: &'a [ConfigRecord],
     pub subscriptions: &'a [SubscriptionRecord],
     pub selected_config_idx: usize,
@@ -696,6 +699,7 @@ impl<'a> UiRenderer<'a> {
             ActiveTab::Dashboard => self.render_dashboard(frame, body_chunks[1]),
             ActiveTab::Subscriptions => self.render_subscriptions(frame, body_chunks[1]),
             ActiveTab::IpScanner => self.render_scanner(frame, body_chunks[1]),
+            ActiveTab::Servers => self.render_servers(frame, body_chunks[1]),
             ActiveTab::Settings => self.render_settings(frame, body_chunks[1]),
             ActiveTab::Activity => self.render_activity(frame, body_chunks[1]),
         }
@@ -721,6 +725,7 @@ impl<'a> UiRenderer<'a> {
                 ComponentId::NavScanner,
                 " ⌖ IP Scanner",
             ),
+            (ActiveTab::Servers, ComponentId::NavServers, " ⌂ My server"),
             (ActiveTab::Activity, ComponentId::NavActivity, " ∿ Activity"),
             (ActiveTab::Settings, ComponentId::NavSettings, " ⚙ Settings"),
         ];

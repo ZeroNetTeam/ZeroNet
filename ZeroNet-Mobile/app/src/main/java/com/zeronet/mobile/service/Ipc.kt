@@ -47,6 +47,10 @@ object Ipc {
     const val DIAGNOSE = 13
     const val WARP_START = 14
     const val WARP_CANCEL = 15
+    /** One request of the "My server" page: `{"id": "...", "req": {...}}`. */
+    const val SERVER_RUN = 16
+    /** Stop the request with this id. */
+    const val SERVER_CANCEL = 17
 
     // engine → UI
     const val STATE = 101
@@ -59,6 +63,8 @@ object Ipc {
     const val DIAGNOSIS = 108
     const val WARP = 109
     const val RACE = 110
+    /** An event of a "My server" request: `{"id": "...", "e": {...}}`. */
+    const val SERVER_EVENT = 111
 
     // ---------------------------------------------------------------- server
 
