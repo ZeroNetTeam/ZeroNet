@@ -612,7 +612,7 @@ object Engine {
 
     private fun routing(s: Settings) = listOf(
         s.iranDirect, s.blockQuic, s.evasion, s.sniDecoy, s.decoyTtl, s.xhttpReuse, s.fragmentPackets, s.remoteDns, s.customDns,
-        s.antiSanctionDns, s.customAntiSanction, s.blockAds, s.logs, s.activeRoutingRules,
+        s.localDns, s.customLocalDns, s.fakeDns, s.antiSanctionDns, s.customAntiSanction, s.blockAds, s.logs, s.activeRoutingRules,
     )
 
     /**
@@ -1226,7 +1226,7 @@ object Engine {
             // Reusing XHTTP connections: Auto tests it next to the usual way.
             .put("xmux", s.xhttpReuse.name.lowercase())
             .put("fragment_packets", s.fragmentPackets.trim().ifEmpty { "1-1" })
-            .put("dns", JSONObject().put("remote", s.remoteDns.name.lowercase()).put("custom", s.customDns.trim()).put("local", "google").put("anti_sanction", s.antiSanctionDns.name.lowercase()).put("custom_anti_sanction", s.customAntiSanction.trim()).put("fakedns", s.fakeDns))
+            .put("dns", JSONObject().put("remote", s.remoteDns.name.lowercase()).put("custom", s.customDns.trim()).put("local", s.localDns.name.lowercase()).put("custom_local", s.customLocalDns.trim()).put("anti_sanction", s.antiSanctionDns.name.lowercase()).put("custom_anti_sanction", s.customAntiSanction.trim()).put("fakedns", s.fakeDns))
             // The user's own scan first, then what others found on this network.
             .put("clean_ips", JSONArray((scan.value.results.take(10).map { "${it.ip}:${it.port}" } + crowdCleanIps).distinct().take(20)))
             .put("log_level", if (s.logs) "info" else "warning")

@@ -107,7 +107,8 @@ the static `protect(I)Z`, and treats `false` or an exception as failure. If no
   "lan": {"enabled": false, "listen": "0.0.0.0", "user": "", "pass": ""},
   "iran_direct": true, "block_ads": true, "block_quic": true,
   "evasion": "off" | "auto" | "strong",
-  "dns": {"remote": "google", "custom": "", "local": "google", "fakedns": true},
+  "dns": {"remote": "google", "custom": "", "local": "google", "custom_local": "",
+          "anti_sanction": "auto", "custom_anti_sanction": "", "fakedns": true},
   "log_level": "warning",
   "clean_ips": ["104.16.1.2:443"]
 }
@@ -157,14 +158,50 @@ cloudflare|google|quad9|adguard; `dns.local`: google|cloudflare|system.
   - `clean_ips` (scanner results, `ip:port`) become the preset's
     `clean_ip_candidates`: the observatory measures them against
     `www.speedtest.net` and ranks edges for CDN-fronted outbounds.
-- **FakeDNS is not emitted** (`dns.fakedns` is accepted and ignored). The
-  runtime has one resolver for everything, including its own lookups of proxy
-  server names, so a catch-all FakeDNS server would hand the dialer synthetic
-  198.18.0.0/15 addresses for the proxy servers themselves.
+- **FakeDNS** (`dns.fakedns`, VPN mode only, on by default): a catch-all
+  `fakedns` server answers the applications behind the TUN with placeholder
+  addresses, so the tunnel resolves the real names itself. The runtime's own
+  lookups (proxy server names, direct connections) use a view of the resolver
+  without it, so the dialer never gets a placeholder for a proxy server.
+- **Resolvers.** `dns.remote` / `dns.custom` is the tier asked through the
+  tunnel, `dns.local` / `dns.custom_local` the one for Iranian names asked
+  directly, `dns.anti_sanction` / `dns.custom_anti_sanction` the one for
+  sanctioned services. A custom value is a bare IP or an IP-addressed
+  `tls://` / `https://` URL (a name could not be looked up first); one that
+  cannot be used is an error naming it.
+- **Direct profiles.** A `direct://?hide=auto#name` link has no server:
+  connections leave directly with the site name in the TLS hello kept from
+  the filter (`hide=` is `auto`, `urgent`, `tfo` or `decoy`, the same methods as
+  `sniSpoof`; `tfo` puts the hello in the SYN, TCP Fast Open, on web ports).
+  Under `auto` the device goes urgent byte, then Fast Open, then decoy, one
+  step down for a server after two silent connections, and starts new
+  servers on the step that worked for the last two. `direct://?fm=<finalmask JSON>#name` cuts the hello up instead
+  (BPB's "Serverless"); both may be given. It helps where the filter reads the
+  name and the address is not blocked. For Google-hosted names (YouTube, Gmail,
+  Play, the APIs) on port 443 a short list of Google front ends that answer a
+  TCP connect is dialled before the addresses DNS gave, so a blocked address
+  does not stop them. Any TLS link may also carry `fm=`;
+  under `auto` it is tried as written and the usual variants are built
+  without it.
 - **Evasion.**
   - `strong` fragments the ClientHello on every TLS/REALITY link (not on ECH
     or plaintext links, where it is invalid or pointless).
-  - `auto` leaves it to the planner.
+  - `auto` adds shaped variants of each link behind the balancer. A TLS link
+    over a CDN transport that could be on Cloudflare also gets an ECH variant,
+    last: the list is looked up under the link's `ech=` name, else its own
+    name, else Cloudflare's shared `cloudflare-ech.com`. A link that already
+    carries `ech=` stays first as written, and its shaped variants are built
+    without ECH. The same test (`real_test`) tries ECH after the plain, urgent
+    and decoy attempts, so a Worker config that only works with its name
+    encrypted is reported alive.
+  - A link on 443 to a known Cloudflare name or address also gets the same link
+    on ports 2053 and 8443 as last variants (a link entry takes `"port": N`
+    for this), and `real_test` tries them after ECH: a network can cut a name
+    on 443 and leave it alone on another port.
+  - A TCP session through a balancer survives one bad member: a member that
+    fails to connect is noted as failed and the next best is tried, and one
+    that has not connected after three seconds is raced by the next best
+    (first to connect carries the session).
   - `off` adds nothing. The runtime's planner is internal and has no config
     switch, so `off` and `auto` currently produce the same config.
 - **Assets.** Managed (geoip/geosite) only if both `geosite.dat` and

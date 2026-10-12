@@ -314,6 +314,9 @@ enum class ImportMode { Links, Subscription }
  * Add your own servers: paste links (or anything that contains them), or a
  * subscription URL the app refreshes itself.
  */
+/** The profile that connects directly with the site name hidden from the filter (no server). */
+private const val SERVERLESS_LINK = "direct://?hide=auto#Serverless"
+
 @Composable
 fun ImportSheet(
     visible: Boolean,
@@ -430,6 +433,25 @@ fun ImportSheet(
                             loading = busy,
                         )
                     }
+                    Spacer(Modifier.height(8.dp))
+                    TonalButton(
+                        stringResource(R.string.import_serverless),
+                        {
+                            busy = true
+                            scope.launch {
+                                result = onImport(SERVERLESS_LINK)
+                                busy = false
+                            }
+                        },
+                        Modifier.fillMaxWidth(),
+                        enabled = !busy,
+                    )
+                    Text(
+                        stringResource(R.string.import_serverless_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.muted,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                     result?.let { r ->
                         Spacer(Modifier.height(12.dp))
                         val ok = r.error == null && r.added > 0

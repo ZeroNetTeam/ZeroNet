@@ -105,6 +105,10 @@ enum class MotionLevel { Full, Reduced }
 enum class AppLanguage { System, English, Persian, Azerbaijani, Kurdish, Arabic, Russian, Turkish, Chinese }
 enum class RemoteDns { Auto, Cloudflare, Google, Quad9, AdGuard }
 
+/** The resolver for Iranian sites, asked directly. Mirrors zero-config `LocalDns`;
+ *  the system resolver is left out because inside the tunnel it loops back into it. */
+enum class LocalDns { Google, Cloudflare }
+
 /** Iranian anti-sanction resolvers for services that block Iranian IPs. Mirrors
  *  zero-config `AntiSanctionDns`; [Off] resolves those names like any other. */
 enum class AntiSanctionDns { Auto, Bertina, Shecan, Electro, Ipm, Begzar, Radar, Off }
@@ -183,6 +187,11 @@ data class Settings(
     /** A user-supplied resolver that overrides [remoteDns] when non-blank.
      *  Accepts a bare IP (e.g. "8.8.8.8"), "tls://…", "https://…/dns-query". */
     val customDns: String = "",
+    /** Resolver for Iranian sites, asked directly (not through the tunnel). */
+    val localDns: LocalDns = LocalDns.Google,
+    /** A user-supplied resolver that overrides [localDns] when non-blank.
+     *  Same rule as [customDns]: an IP, or an IP-addressed tls://… / https://…/dns-query. */
+    val customLocalDns: String = "",
     /** Domestic resolver for sanctioned services (OpenAI, GitHub, …) that block
      *  Iranian IPs; they resolve here and route direct. */
     val antiSanctionDns: AntiSanctionDns = AntiSanctionDns.Auto,
@@ -271,6 +280,8 @@ data class Settings(
         .put("remoteDns", remoteDns.name)
         .put("remoteDnsChosen", true)
         .put("customDns", customDns)
+        .put("localDns", localDns.name)
+        .put("customLocalDns", customLocalDns)
         .put("antiSanctionDns", antiSanctionDns.name)
         .put("antiSanctionChosen", true)
         .put("customAntiSanction", customAntiSanction)
@@ -341,6 +352,8 @@ data class Settings(
                     if (it == RemoteDns.Google && !o.has("remoteDnsChosen")) d.remoteDns else it
                 },
                 customDns = o.optString("customDns", d.customDns),
+                localDns = o.enumOr("localDns", d.localDns),
+                customLocalDns = o.optString("customLocalDns", d.customLocalDns),
                 // Shecan saved before the measured "Auto" existed was the old
                 // default; move it once. A choice saved since is kept.
                 antiSanctionDns = o.enumOr("antiSanctionDns", d.antiSanctionDns).let {

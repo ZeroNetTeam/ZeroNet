@@ -13,7 +13,7 @@ object ProtocolBannerFx {
     const val UNKNOWN = "CUSTOM?"
 
     /** Protocols whose carrier is part of their name: no transport or security is added to them. */
-    private val SELF_CONTAINED = setOf("hysteria2", "hy2", "tuic", "juicity", "anytls", "zerov1", "tide", "masterdns", "amnezia-wg", "wireguard", "socks", "tor")
+    private val SELF_CONTAINED = setOf("hysteria2", "hy2", "tuic", "juicity", "anytls", "zerov1", "tide", "masterdns", "amnezia-wg", "wireguard", "socks", "tor", "freedom")
 
     private fun protocolName(protocol: String): String? = when (protocol.trim().lowercase()) {
         "vless" -> "VLESS"
@@ -30,6 +30,7 @@ object ProtocolBannerFx {
         "amnezia-wg", "wireguard" -> "WIREGUARD"
         "socks" -> "SOCKS5"
         "tor" -> "TOR"
+        "freedom" -> "FRAGMENT"
         else -> null
     }
 
@@ -129,6 +130,7 @@ object ProtocolBannerFx {
         "wireguard" to Look(0xFFFF3B5C, "sans-serif-condensed", false, 3.0f),
         "socks" to Look(0xFFC9D6FF, "serif-monospace", true, 1.5f),
         "tor" to Look(0xFFC04DFF, "serif", false, 4.0f),
+        "freedom" to Look(0xFFB8FF3D, "sans-serif-light", false, 3.5f),
     )
 
     /** The look of a config nobody has a name for. */

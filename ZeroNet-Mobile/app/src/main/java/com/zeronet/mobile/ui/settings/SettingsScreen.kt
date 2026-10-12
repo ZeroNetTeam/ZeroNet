@@ -84,6 +84,7 @@ import com.zeronet.mobile.model.ConnectionProfile
 import com.zeronet.mobile.model.DECOY_TTL_OPTIONS
 import com.zeronet.mobile.model.DecoyMode
 import com.zeronet.mobile.model.EvasionLevel
+import com.zeronet.mobile.model.LocalDns
 import com.zeronet.mobile.model.MotionLevel
 import com.zeronet.mobile.model.Palette
 import com.zeronet.mobile.model.RemoteDns
@@ -941,6 +942,45 @@ private fun EvasionCard(s: Settings, q: SettingsQuery, reconnect: Boolean, actio
                     }
                 }
             }
+        }
+        if (f.show(R.string.settings_local_dns)) {
+            LabeledBlock(stringResource(R.string.settings_local_dns), subtitle = stringResource(R.string.settings_local_dns_hint)) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LocalDns.entries.forEach { dns ->
+                        val enabled = s.customLocalDns.isBlank()
+                        ZeroChip(
+                            text = when (dns) {
+                                LocalDns.Google -> "Google"
+                                LocalDns.Cloudflare -> "Cloudflare"
+                            },
+                            selected = enabled && s.localDns == dns,
+                            onClick = { actions.onChange { it.copy(localDns = dns) } },
+                            modifier = Modifier.semantics { this.selected = enabled && s.localDns == dns },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                var customLocal by rememberSaveable(s.customLocalDns) { mutableStateOf(s.customLocalDns) }
+                val commitCustomLocal = { actions.onChange { it.copy(customLocalDns = customLocal.trim()) } }
+                ZeroTextField(
+                    value = customLocal,
+                    onValueChange = { customLocal = it },
+                    placeholder = stringResource(R.string.settings_custom_dns_hint),
+                    keyboardType = KeyboardType.Uri,
+                    onImeAction = commitCustomLocal,
+                    clearLabel = stringResource(R.string.action_clear),
+                )
+                Note(stringResource(R.string.settings_local_dns_note))
+                val dirtyLocal = customLocal.trim() != s.customLocalDns
+                AnimatedVisibility(dirtyLocal) {
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
+                        ZeroChip(stringResource(R.string.action_save), onClick = commitCustomLocal, icon = ZeroIcons.Check, selected = true)
+                    }
+                }
+            }
+        }
+        if (f.show(R.string.settings_fake_dns)) {
+            ToggleRow(stringResource(R.string.settings_fake_dns), s.fakeDns, { v -> actions.onChange { it.copy(fakeDns = v) } }, subtitle = stringResource(R.string.settings_fake_dns_hint))
         }
         if (f.show(R.string.settings_block_ads)) {
             ToggleRow(stringResource(R.string.settings_block_ads), s.blockAds, { v -> actions.onChange { it.copy(blockAds = v) } }, subtitle = stringResource(R.string.settings_block_ads_hint))
