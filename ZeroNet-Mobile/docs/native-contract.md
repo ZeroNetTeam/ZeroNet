@@ -173,7 +173,8 @@ cloudflare|google|quad9|adguard; `dns.local`: google|cloudflare|system.
   connections leave directly with the site name in the TLS hello kept from
   the filter (`hide=` is `auto`, `urgent`, `record`, `empty`, `tfo` or `decoy`, the same methods as
   `sniSpoof`; `tfo` puts the hello in the SYN, TCP Fast Open, on web ports;
-  `record` writes another version into the first record header, which a filter
+  `record` writes another version into the first record header (and, on a
+  connection the engine itself secures, into the hello's own version field), which a filter
   that only parses the usual versions skips and servers do not look at;
   `empty` puts one empty handshake record in front of the hello).
   Under `auto` the device goes urgent byte, then the record version, then the empty record, then Fast Open, then decoy, one
