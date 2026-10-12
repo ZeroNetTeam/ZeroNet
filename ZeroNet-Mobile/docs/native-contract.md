@@ -171,9 +171,12 @@ cloudflare|google|quad9|adguard; `dns.local`: google|cloudflare|system.
   cannot be used is an error naming it.
 - **Direct profiles.** A `direct://?hide=auto#name` link has no server:
   connections leave directly with the site name in the TLS hello kept from
-  the filter (`hide=` is `auto`, `urgent`, `tfo` or `decoy`, the same methods as
-  `sniSpoof`; `tfo` puts the hello in the SYN, TCP Fast Open, on web ports).
-  Under `auto` the device goes urgent byte, then Fast Open, then decoy, one
+  the filter (`hide=` is `auto`, `urgent`, `record`, `empty`, `tfo` or `decoy`, the same methods as
+  `sniSpoof`; `tfo` puts the hello in the SYN, TCP Fast Open, on web ports;
+  `record` writes another version into the first record header, which a filter
+  that only parses the usual versions skips and servers do not look at;
+  `empty` puts one empty handshake record in front of the hello).
+  Under `auto` the device goes urgent byte, then the record version, then the empty record, then Fast Open, then decoy, one
   step down for a server after two silent connections, and starts new
   servers on the step that worked for the last two. `direct://?fm=<finalmask JSON>#name` cuts the hello up instead
   (BPB's "Serverless"); both may be given. It helps where the filter reads the
