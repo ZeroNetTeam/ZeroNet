@@ -26,6 +26,7 @@ zero-scanner = { workspace = true }
 # The config finder: feed discovery, liveness tests and the crowd rankings.
 zero-discovery = { workspace = true }
 zero-evasion = { workspace = true }
+zero-security = { workspace = true }
 # Setting up and watching the person's own server over SSH (the "My server" tab).
 zero-provision = { workspace = true }
 
