@@ -129,6 +129,8 @@ pub struct EngineOptions {
     pub lan_credential: Option<LanCredential>,
     /// Offer UDP associate on the SOCKS inbound.
     pub udp_enabled: bool,
+    /// Skip the certificate check on every TLS outbound ("Allow insecure").
+    pub allow_insecure: bool,
     pub sniffing_enabled: bool,
     /// A sniffed domain steers routing without rewriting the destination.
     pub sniffing_route_only: bool,
@@ -194,6 +196,7 @@ impl Default for EngineOptions {
             allow_lan: false,
             lan_credential: None,
             udp_enabled: true,
+            allow_insecure: false,
             sniffing_enabled: true,
             sniffing_route_only: false,
             log_level: "warning".into(),
@@ -1080,6 +1083,7 @@ fn apply_engine_options(config: &mut serde_json::Value, options: &EngineOptions)
             apply_mux(outbound, options);
             apply_fingerprint(outbound, options);
             apply_evasion(outbound, options);
+            apply_allow_insecure(outbound, options);
             apply_sockopt(outbound, options);
         }
     }
@@ -1198,6 +1202,43 @@ fn apply_mux(outbound: &mut serde_json::Value, options: &EngineOptions) {
             "concurrency": options.mux_concurrency,
         }),
     );
+}
+
+/// The "Allow insecure" switch: skip the certificate check on an outbound.
+///
+/// It is the user's choice for every server at once, so it is *set* each
+/// time the options are applied: on adds the flag, off takes away the one this
+/// function stamped on a share-link outbound. An expanded outbound the user
+/// wrote by hand keeps whatever its own `tlsSettings` say. Only certificate
+/// TLS has a certificate to skip; REALITY, plain and other carriers are left
+/// as they are.
+fn apply_allow_insecure(outbound: &mut serde_json::Value, options: &EngineOptions) {
+    if outbound.get("link").and_then(|l| l.as_str()).is_some() {
+        if let Some(object) = outbound.as_object_mut() {
+            if options.allow_insecure {
+                object.insert("allowInsecure".into(), serde_json::json!(true));
+            } else {
+                object.remove("allowInsecure");
+            }
+        }
+        return;
+    }
+    if !options.allow_insecure {
+        return;
+    }
+    let tls = outbound
+        .get_mut("streamSettings")
+        .filter(|stream| stream.get("security").and_then(|s| s.as_str()) == Some("tls"))
+        .and_then(|stream| stream.as_object_mut())
+        .map(|stream| {
+            stream
+                .entry("tlsSettings")
+                .or_insert_with(|| serde_json::json!({}))
+        })
+        .and_then(|tls| tls.as_object_mut());
+    if let Some(tls) = tls {
+        tls.insert("allowInsecure".into(), serde_json::json!(true));
+    }
 }
 
 /// Whether an outbound negotiates XTLS Vision, in either shape it can arrive
@@ -1877,6 +1918,80 @@ fn ensure_tun_inbound(inbounds: &mut Vec<serde_json::Value>, options: &EngineOpt
 
 #[cfg(test)]
 mod tests {
+
+    /// "Allow insecure" is stamped on a share-link outbound, or into an
+    /// expanded TLS outbound, only while it is on; off removes what it put
+    /// on a link; REALITY and plain outbounds are left alone.
+    #[test]
+    fn allow_insecure_is_set_while_on_and_taken_off_when_off() {
+        let on = EngineOptions {
+            allow_insecure: true,
+            ..EngineOptions::default()
+        };
+        let off = EngineOptions::default();
+        assert!(!off.allow_insecure, "off by default");
+
+        let mut link = serde_json::json!({"tag": "proxy", "link": "vless://x"});
+        apply_allow_insecure(&mut link, &off);
+        assert!(link.get("allowInsecure").is_none());
+        apply_allow_insecure(&mut link, &on);
+        assert_eq!(link["allowInsecure"], serde_json::json!(true));
+        apply_allow_insecure(&mut link, &off);
+        assert!(link.get("allowInsecure").is_none(), "off did not undo on");
+
+        let mut tls = serde_json::json!({
+            "protocol": "vless",
+            "streamSettings": {"network": "tcp", "security": "tls",
+                               "tlsSettings": {"serverName": "a.example"}}
+        });
+        apply_allow_insecure(&mut tls, &off);
+        assert!(tls["streamSettings"]["tlsSettings"]
+            .get("allowInsecure")
+            .is_none());
+        apply_allow_insecure(&mut tls, &on);
+        assert_eq!(
+            tls["streamSettings"]["tlsSettings"]["allowInsecure"],
+            serde_json::json!(true)
+        );
+        // Whatever a hand-written outbound already says is not undone.
+        apply_allow_insecure(&mut tls, &off);
+        assert_eq!(
+            tls["streamSettings"]["tlsSettings"]["allowInsecure"],
+            serde_json::json!(true)
+        );
+
+        let mut reality = serde_json::json!({
+            "protocol": "vless",
+            "streamSettings": {"network": "tcp", "security": "reality",
+                               "realitySettings": {"serverName": "a.example"}}
+        });
+        let before = reality.clone();
+        apply_allow_insecure(&mut reality, &on);
+        assert_eq!(reality, before);
+    }
+
+    /// The whole config the TUI hands the engine carries it, and the engine
+    /// compiles it into outbounds that skip the check.
+    #[test]
+    fn allow_insecure_reaches_the_compiled_engine_config() {
+        let mut config = serde_json::json!({
+            "inbounds": [],
+            "outbounds": [{"tag": "proxy",
+              "link": "vless://00000000-0000-0000-0000-000000000002@cdn.example.com:443?security=tls&sni=cdn.example.com&type=ws&path=%2Fws&encryption=none"}]
+        });
+        let on = EngineOptions {
+            allow_insecure: true,
+            ..EngineOptions::default()
+        };
+        apply_engine_options(&mut config, &on);
+        let (generation, _) = zero_config::compile_config(&config, zero_core::GenerationId(1))
+            .expect("the config compiles");
+        let zero_config::Security::Tls(tls) = &generation.config.outbounds[0].stream.security
+        else {
+            panic!("expected certificate TLS");
+        };
+        assert!(tls.allow_insecure);
+    }
     use super::*;
 
     const XHTTP_LINK: &str = "vless://00000000-0000-0000-0000-000000000003@x.example.com:443\
@@ -2063,6 +2178,7 @@ mod tests {
             allow_lan: true,
             lan_credential: Some(new_lan_credential()),
             udp_enabled: false,
+            allow_insecure: false,
             sniffing_enabled: true,
             sniffing_route_only: true,
             log_level: "debug".into(),

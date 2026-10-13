@@ -932,6 +932,7 @@ impl<'a> App<'a> {
             allow_lan: self.settings.allow_lan,
             lan_credential: self.lan_credential(),
             udp_enabled: self.settings.udp_enabled,
+            allow_insecure: self.settings.allow_insecure,
             sniffing_enabled: self.settings.sniffing_enabled,
             sniffing_route_only: self.settings.sniffing_route_only,
             log_level: self.settings.log_level.clone(),
@@ -4667,6 +4668,17 @@ impl App<'_> {
                 } else {
                     "No longer sharing results."
                 });
+            }
+            ComponentId::SettingAllowInsecureToggle => {
+                self.settings.allow_insecure = !self.settings.allow_insecure;
+                self.persist_settings();
+                self.toasts.info(if self.settings.allow_insecure {
+                    "Allow insecure is on: more servers will connect, but a server's certificate is no longer checked."
+                } else {
+                    "Allow insecure is off: certificates are checked again."
+                });
+                // A connection already up keeps the rule it started with.
+                self.reapply_engine_settings().await?;
             }
             ComponentId::SettingFinderDepthCycle => {
                 self.settings.finder_max_tier = (self.settings.finder_max_tier + 1) % 4;

@@ -95,6 +95,7 @@ pub enum ComponentId {
     SettingAutoUpdateToggle,
     /// Share how found servers fared (crowd reports).
     SettingShareResultsToggle,
+    SettingAllowInsecureToggle,
     /// How deep the config finder searches the public feeds.
     SettingFinderDepthCycle,
     /// The answer to "may ZeroNet use Cloudflare WARP?" (ask / on / off).

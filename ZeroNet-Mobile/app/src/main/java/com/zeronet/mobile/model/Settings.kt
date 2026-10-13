@@ -183,6 +183,10 @@ data class Settings(
     val decoyTtl: Int = 8,
     val xhttpReuse: ReuseMode = ReuseMode.Auto,
     val blockQuic: Boolean = true,
+    /** Skip the certificate check on every server ("Allow insecure"): reaches
+     *  more servers (self-signed, expired, wrong name) but anyone on the
+     *  path can pose as them. Off unless the user turns it on. */
+    val allowInsecure: Boolean = false,
     val remoteDns: RemoteDns = RemoteDns.Auto,
     /** A user-supplied resolver that overrides [remoteDns] when non-blank.
      *  Accepts a bare IP (e.g. "8.8.8.8"), "tls://…", "https://…/dns-query". */
@@ -277,6 +281,7 @@ data class Settings(
         .put("decoyTtl", decoyTtl)
         .put("xhttpReuse", xhttpReuse.name)
         .put("blockQuic", blockQuic)
+        .put("allowInsecure", allowInsecure)
         .put("remoteDns", remoteDns.name)
         .put("remoteDnsChosen", true)
         .put("customDns", customDns)
@@ -346,6 +351,7 @@ data class Settings(
                 decoyTtl = o.optInt("decoyTtl", d.decoyTtl).coerceIn(0, 64),
                 xhttpReuse = o.enumOr("xhttpReuse", d.xhttpReuse),
                 blockQuic = o.optBoolean("blockQuic", d.blockQuic),
+                allowInsecure = o.optBoolean("allowInsecure", d.allowInsecure),
                 // Google saved before "Auto" existed was the old default;
                 // move it once. A choice saved since is kept.
                 remoteDns = o.enumOr("remoteDns", d.remoteDns).let {

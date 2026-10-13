@@ -118,6 +118,8 @@ pub struct FinderRequest {
     /// probe evidence builds up against the same edges, but different between
     /// installs, so not every client leans on the same few addresses.
     pub front_seed: u64,
+    /// The user's "Allow insecure" switch, for the tests and the search.
+    pub allow_insecure: bool,
 }
 
 impl Default for FinderRequest {
@@ -131,6 +133,7 @@ impl Default for FinderRequest {
             crowd_net: zero_discovery::crowd::ALL_NETS.into(),
             use_crowd: true,
             front_seed: DEFAULT_FRONT_SEED,
+            allow_insecure: false,
         }
     }
 }
@@ -194,6 +197,7 @@ pub async fn run(request: FinderRequest, tx: Tx, cancel: CancellationToken) {
             timeout_ms: 4000,
             probe_url: PROBE_URL.into(),
             links,
+            allow_insecure: request.allow_insecure,
             ..TestRequest::default()
         };
         let events = collect(
@@ -255,6 +259,7 @@ pub async fn run(request: FinderRequest, tx: Tx, cancel: CancellationToken) {
         probe_url: PROBE_URL.into(),
         next_tier_if_alive_below: want.min(3),
         fetch: true,
+        allow_insecure: request.allow_insecure,
         ..DiscoverRequest::default()
     };
     let forward = {

@@ -2,6 +2,8 @@ package com.zeronet.mobile.model
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsTest {
@@ -86,6 +88,7 @@ class SettingsTest {
             lanPass = "p@ss",
             evasion = EvasionLevel.Strong,
             blockQuic = false,
+            allowInsecure = true,
             remoteDns = RemoteDns.Quad9,
             customDns = "tls://9.9.9.9",
             localDns = LocalDns.Cloudflare,
@@ -108,6 +111,16 @@ class SettingsTest {
         )
         val decoded = Settings.fromJson(JSONObject(original.toJson().toString()))
         assertEquals(original, decoded)
+    }
+
+    /** Skipping certificate checks is something the user turns on, never a default or a guess. */
+    @Test
+    fun `allow insecure is off unless it was switched on`() {
+        assertFalse(Settings().allowInsecure)
+        assertFalse(Settings.fromJson(JSONObject("{}")).allowInsecure)
+        assertFalse(Settings.fromJson(JSONObject("""{"allowInsecure":"yes"}""")).allowInsecure)
+        assertTrue(Settings.fromJson(JSONObject("""{"allowInsecure":true}""")).allowInsecure)
+        assertTrue(Settings.fromJson(Settings(allowInsecure = true).toJson()).allowInsecure)
     }
 
     @Test

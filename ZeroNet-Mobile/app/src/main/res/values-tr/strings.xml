@@ -362,6 +362,8 @@
     <string name="decoy_test_offline">Adı gizleme bu telefonda çalışıyor. Deneme sitelerine ulaşılamadı, bu yüzden ağ kısmı denetlenmedi.</string>
     <string name="settings_block_quic">QUIC\'i engelle</string>
     <string name="settings_block_quic_hint">Uygulamalar takılmak yerine TCP\'ye geri döner</string>
+    <string name="settings_allow_insecure">Güvensiz bağlantıya izin ver</string>
+    <string name="settings_allow_insecure_hint">Daha fazla sunucuya bağlanır, ancak daha az güvenlidir</string>
     <string name="settings_remote_dns">Engellenen siteler için DNS</string>
     <string name="settings_remote_dns_hint">Tünel üzerinden sorulur, böylece İSS\'niz yanıtı göremez veya değiştiremez</string>
     <string name="settings_custom_dns_hint">Özel çözümleyici (ör. 8.8.8.8)</string>
