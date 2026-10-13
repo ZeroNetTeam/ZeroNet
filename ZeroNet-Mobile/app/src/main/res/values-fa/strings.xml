@@ -405,6 +405,8 @@
     <string name="decoy_test_offline">پنهان کردن نام روی این گوشی کار می‌کند. سایت‌های آزمایشی در دسترس نبودند، پس بخش شبکه بررسی نشد.</string>
     <string name="settings_block_quic">مسدود کردن QUIC</string>
     <string name="settings_block_quic_hint">برنامه‌ها به جای گیر کردن، سراغ TCP می‌روند</string>
+    <string name="settings_allow_insecure">اجازه به اتصال ناامن</string>
+    <string name="settings_allow_insecure_hint">به سرورهای بیشتری وصل می‌شود، ولی امنیت کمتری دارد</string>
     <string name="settings_remote_dns">DNS برای سایت‌های مسدود</string>
     <string name="settings_remote_dns_hint">از داخل VPN پرسیده می‌شود تا اپراتور نتواند جواب را ببیند یا عوض کند</string>
     <string name="settings_custom_dns_hint">DNS دلخواه (مثلاً ۸.۸.۸.۸)</string>

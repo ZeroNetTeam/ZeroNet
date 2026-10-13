@@ -1139,6 +1139,28 @@ fn the_cloudflare_answer_is_on_the_page_and_says_which_it_is() {
     }
 }
 
+/// "Allow Insecure" is on the page without opening Advanced, off by default,
+/// says plainly what it trades, and turns to a warning colour's text when on.
+#[test]
+fn allow_insecure_is_on_the_page_and_says_what_it_trades() {
+    let mut h = Harness::new();
+    h.active_tab = ActiveTab::Settings;
+    // Advanced stays folded: this is an everyday switch.
+    h.advanced_open = false;
+    let all = settings_text(&mut h, 150, 44);
+    assert!(all.contains("Allow Insecure"), "the row is missing");
+    assert!(
+        all.contains("connects to more servers, but less secure"),
+        "the row has to say what it costs"
+    );
+    assert!(!h.settings.allow_insecure, "it must be off by default");
+    assert!(!all.contains("ON · LESS SECURE"));
+
+    h.settings.allow_insecure = true;
+    let all = settings_text(&mut h, 150, 44);
+    assert!(all.contains("ON · LESS SECURE"), "on is not shown as on");
+}
+
 /// The engine settings carried over from v2rayN, and the scanner's own
 /// controls, all have to be on the page and reachable.
 ///

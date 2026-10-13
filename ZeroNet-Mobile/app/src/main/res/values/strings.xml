@@ -420,6 +420,8 @@
     <string name="decoy_test_offline">Hiding the name works on this phone. The test sites couldn\'t be reached, so the network part wasn\'t checked.</string>
     <string name="settings_block_quic">Block QUIC</string>
     <string name="settings_block_quic_hint">Apps fall back to TCP instead of stalling</string>
+    <string name="settings_allow_insecure">Allow insecure</string>
+    <string name="settings_allow_insecure_hint">Connects to more servers, but less secure</string>
     <string name="settings_remote_dns">DNS for blocked sites</string>
     <string name="settings_remote_dns_hint">Asked through the tunnel, so your ISP can’t see or change the answer</string>
     <string name="settings_custom_dns_hint">Custom resolver (e.g. 8.8.8.8)</string>

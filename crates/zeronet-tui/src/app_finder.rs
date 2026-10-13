@@ -138,6 +138,7 @@ impl App<'_> {
                 .unwrap_or_else(|| zero_discovery::crowd::ALL_NETS.into()),
             use_crowd: true,
             front_seed: self.front_seed(),
+            allow_insecure: self.settings.allow_insecure,
         };
         let cancel = zero_discovery::CancellationToken::new();
         let tx = self.finder.tx.clone();

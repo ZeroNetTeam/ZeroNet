@@ -364,6 +364,8 @@
     <string name="decoy_test_offline">شاردنەوەی ناو لەسەر ئەم مۆبایلە کار دەکات. ماڵپەڕە تاقیکارییەکان بەردەست نەبوون، بۆیە بەشی تۆڕ نەپشکنرا.</string>
     <string name="settings_block_quic">بلۆککردنی QUIC</string>
     <string name="settings_block_quic_hint">ئەپەکان لەبری گیرکردن، دەگەڕێنەوە بۆ TCP</string>
+    <string name="settings_allow_insecure">ڕێگەدان بە پەیوەندیی نائەمن</string>
+    <string name="settings_allow_insecure_hint">بە سێرڤەری زیاتر دەبەسترێتەوە، بەڵام کەمتر پارێزراوە</string>
     <string name="settings_remote_dns">DNS بۆ ماڵپەڕە بلۆککراوەکان</string>
     <string name="settings_remote_dns_hint">بە تونێلدا دەپرسرێت، بۆیە ISPـەکەت ناتوانێت وەڵامەکە ببینێت یان بیگۆڕێت</string>
     <string name="settings_custom_dns_hint">DNSی دڵخواز (بۆ نموونە 8.8.8.8)</string>

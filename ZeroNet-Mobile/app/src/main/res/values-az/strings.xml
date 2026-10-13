@@ -363,6 +363,8 @@
     <string name="decoy_test_offline">Adın gizlədilməsi bu telefonda işləyir. Yoxlama saytlarına çatmaq olmadı, ona görə şəbəkə hissəsi yoxlanmadı.</string>
     <string name="settings_block_quic">QUIC-i blokla</string>
     <string name="settings_block_quic_hint">Tətbiqlər donmaq əvəzinə TCP-yə keçir</string>
+    <string name="settings_allow_insecure">Etibarsız bağlantıya icazə ver</string>
+    <string name="settings_allow_insecure_hint">Daha çox serverə qoşulur, lakin daha az təhlükəsizdir</string>
     <string name="settings_remote_dns">Bloklanmış saytlar üçün DNS</string>
     <string name="settings_remote_dns_hint">Tunel vasitəsilə soruşulur, ona görə ISP-niz cavabı görə və ya dəyişə bilmir</string>
     <string name="settings_custom_dns_hint">Fərdi resolver (məs. 8.8.8.8)</string>

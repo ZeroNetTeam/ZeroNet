@@ -187,6 +187,10 @@ pub struct AppSettings {
     // ------------------------------------------------------- config finder
     /// Share which public servers the finder saw working (and not), anonymously.
     pub share_results: bool,
+    /// Skip certificate checks on every TLS server, in the finder and when
+    /// connected: reaches more servers (self-signed, expired, wrong name),
+    /// but anyone on the path can pose as them. Off unless the user turns it on.
+    pub allow_insecure: bool,
     /// Highest feed tier a search reaches (0 = the project's tested list only).
     pub finder_max_tier: u32,
     /// Keep this many found servers; the least useful beyond it are pruned.
@@ -263,6 +267,7 @@ impl Default for AppSettings {
             muted_notices: String::new(),
             auto_update_check: true,
             share_results: true,
+            allow_insecure: false,
             finder_max_tier: 2,
             finder_keep: 40,
             lan_password: String::new(),
@@ -659,6 +664,7 @@ impl Database {
                     "muted_notices" => settings.muted_notices = item.1,
                     "auto_update_check" => settings.auto_update_check = truthy(&item.1),
                     "share_results" => settings.share_results = truthy(&item.1),
+                    "allow_insecure" => settings.allow_insecure = truthy(&item.1),
                     "finder_max_tier" => {
                         if let Ok(v) = item.1.parse::<u32>() {
                             settings.finder_max_tier = v.min(3);
@@ -832,6 +838,10 @@ impl Database {
             (
                 "share_results",
                 if settings.share_results { "1" } else { "0" },
+            ),
+            (
+                "allow_insecure",
+                if settings.allow_insecure { "1" } else { "0" },
             ),
             ("finder_max_tier", &settings.finder_max_tier.to_string()),
             ("finder_keep", &settings.finder_keep.to_string()),
@@ -1508,6 +1518,7 @@ mod tests {
             muted_notices: "startup.elevated,startup.no-elevator".into(),
             auto_update_check: false,
             share_results: false,
+            allow_insecure: true,
             finder_max_tier: 3,
             finder_keep: 12,
             lan_password: "lan-secret".into(),

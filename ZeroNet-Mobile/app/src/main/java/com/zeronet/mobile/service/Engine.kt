@@ -611,7 +611,7 @@ object Engine {
     private fun topology(s: Settings) = listOf(s.lanShare, s.lanUser, s.lanPass, s.socksPort, s.httpPort)
 
     private fun routing(s: Settings) = listOf(
-        s.iranDirect, s.blockQuic, s.evasion, s.sniDecoy, s.decoyTtl, s.xhttpReuse, s.fragmentPackets, s.remoteDns, s.customDns,
+        s.iranDirect, s.blockQuic, s.allowInsecure, s.evasion, s.sniDecoy, s.decoyTtl, s.xhttpReuse, s.fragmentPackets, s.remoteDns, s.customDns,
         s.localDns, s.customLocalDns, s.fakeDns, s.antiSanctionDns, s.customAntiSanction, s.blockAds, s.logs, s.activeRoutingRules,
     )
 
@@ -986,6 +986,8 @@ object Engine {
             .put("probe_url", PROBE_URL)
             .put("next_tier_if_alive_below", 3)
             .put("fetch", true)
+            // A search tests servers the way the connection will run them.
+            .put("allow_insecure", settings.allowInsecure)
         var progress = DiscoveryProgress(method = rung?.id.orEmpty())
         var pendingReload = false
         var lastReload = 0L
@@ -1088,6 +1090,7 @@ object Engine {
                 .put("concurrency", concurrency.coerceIn(1, group.size))
                 .put("timeout_ms", if (lenient) maxOf(timeoutMs, OWN_TIMEOUT_MS) else timeoutMs)
                 .put("probe_url", PROBE_URL)
+                .put("allow_insecure", settings.allowInsecure)
             if (lenient) request.put("confirm_tls", false)
             var ok = 0
             val failures = HashMap<String, Int>()
@@ -1213,6 +1216,8 @@ object Engine {
             // Games and voice run over UDP: Gaming never blocks it.
             .put("iran_direct", s.iranDirect).put("block_ads", s.blockAds)
             .put("block_quic", s.blockQuic && s.profile != ConnectionProfile.Gaming && rung?.allowQuic != true)
+            // The user's switch to skip certificate checks; the core applies it to every link.
+            .put("allow_insecure", s.allowInsecure)
             // Fragmenting the ClientHello costs round trips; Fast and Gaming skip it.
             .put("evasion", if (!s.profile.classic) "off" else when (rung?.evasion ?: s.evasion) { EvasionLevel.Off -> "off"; EvasionLevel.Auto -> "auto"; EvasionLevel.Strong -> "strong" })
             .put("fragment_first", crowdFragmentFirst)
@@ -2186,6 +2191,7 @@ object Engine {
                     .put("tcp_concurrency", 256).put("tcp_timeout_ms", 1500).put("tcp_stop_after_open", 1500)
                     .put("real_concurrency", 64).put("real_timeout_ms", 3000)
                     .put("probe_url", PROBE_URL).put("next_tier_if_alive_below", 10).put("fetch", true)
+                    .put("allow_insecure", next.allowInsecure)
                 nativeJob { ZrayNative.discover(request.toString(), it) }.collect { e ->
                     if (e.optString("t") != "alive") return@collect
                     val info = e.optJSONObject("info") ?: return@collect

@@ -372,6 +372,8 @@
     <string name="decoy_test_offline">Скрытие имени на этом телефоне работает. Проверочные сайты недоступны, поэтому сеть не проверена.</string>
     <string name="settings_block_quic">Блокировать QUIC</string>
     <string name="settings_block_quic_hint">Приложения переходят на TCP вместо зависаний</string>
+    <string name="settings_allow_insecure">Разрешить небезопасные</string>
+    <string name="settings_allow_insecure_hint">Подключается к большему числу серверов, но менее безопасно</string>
     <string name="settings_remote_dns">DNS для заблокированных сайтов</string>
     <string name="settings_remote_dns_hint">Запрос идёт через туннель, поэтому провайдер не видит и не меняет ответ</string>
     <string name="settings_custom_dns_hint">Свой резолвер (например, 8.8.8.8)</string>

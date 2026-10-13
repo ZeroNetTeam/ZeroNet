@@ -357,6 +357,8 @@
     <string name="decoy_test_offline">隐藏名称在这部手机上有效。无法访问测试网站，因此没有检查网络部分。</string>
     <string name="settings_block_quic">阻止 QUIC</string>
     <string name="settings_block_quic_hint">应用会回退到 TCP，而不是卡住</string>
+    <string name="settings_allow_insecure">允许不安全连接</string>
+    <string name="settings_allow_insecure_hint">可连接更多服务器，但安全性更低</string>
     <string name="settings_remote_dns">被封锁站点的 DNS</string>
     <string name="settings_remote_dns_hint">通过隧道查询，因此你的 ISP 无法查看或篡改结果</string>
     <string name="settings_custom_dns_hint">自定义解析器（例如 8.8.8.8）</string>

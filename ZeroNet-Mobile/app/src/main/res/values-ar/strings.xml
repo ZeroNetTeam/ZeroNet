@@ -382,6 +382,8 @@
     <string name="decoy_test_offline">إخفاء الاسم يعمل على هذا الهاتف. تعذّر الوصول إلى مواقع الاختبار، فلم يُفحص جانب الشبكة.</string>
     <string name="settings_block_quic">حظر QUIC</string>
     <string name="settings_block_quic_hint">تلجأ التطبيقات إلى TCP بدل التعطّل</string>
+    <string name="settings_allow_insecure">السماح بالاتصال غير الآمن</string>
+    <string name="settings_allow_insecure_hint">يتصل بعدد أكبر من الخوادم، لكنه أقل أمانًا</string>
     <string name="settings_remote_dns">DNS للمواقع المحجوبة</string>
     <string name="settings_remote_dns_hint">يُطلب عبر النفق، فلا يستطيع مزوّد خدمتك رؤية الجواب أو تغييره</string>
     <string name="settings_custom_dns_hint">محلّل مخصص (مثل 8.8.8.8)</string>

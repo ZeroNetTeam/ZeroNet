@@ -256,6 +256,7 @@ private val CONNECTION_KEYS = intArrayOf(
     R.string.settings_autoconnect, R.string.settings_autoswitch, R.string.settings_more_connection,
     R.string.settings_kill_switch, R.string.settings_kill_switch_app, R.string.trusted_title,
     R.string.settings_ipv6, R.string.settings_mtu, R.string.settings_warp_consent, R.string.settings_warp_order,
+    R.string.settings_allow_insecure,
     R.string.settings_profile, R.string.profile_normal, R.string.profile_fast, R.string.profile_gaming,
     R.string.profile_legacy, R.string.kw_connection,
 )
@@ -427,6 +428,14 @@ private fun ConnectionCard(s: Settings, q: SettingsQuery, reconnect: Boolean, ac
                     },
                 )
             }
+        }
+        if (f.show(R.string.settings_allow_insecure)) {
+            ToggleRow(
+                stringResource(R.string.settings_allow_insecure),
+                s.allowInsecure,
+                { v -> actions.onChange { it.copy(allowInsecure = v) } },
+                subtitle = stringResource(R.string.settings_allow_insecure_hint),
+            )
         }
         if (f.show(R.string.settings_autoconnect)) {
             LabeledBlock(stringResource(R.string.settings_autoconnect)) {

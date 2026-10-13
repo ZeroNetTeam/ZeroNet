@@ -19,9 +19,9 @@ const LABEL_WIDTH: usize = 28;
 const VALUE_WIDTH: usize = 20;
 
 /// Rows when Advanced is folded: four headings plus the everyday settings.
-pub(crate) const SETTINGS_ROWS_BASIC: usize = 33;
+pub(crate) const SETTINGS_ROWS_BASIC: usize = 34;
 /// Rows when Advanced is open, including the edge-scanner block.
-pub(crate) const SETTINGS_ROWS: usize = 65;
+pub(crate) const SETTINGS_ROWS: usize = 66;
 
 impl UiRenderer<'_> {
     /// Total lines the settings page needs, for the scrollbar.
@@ -330,6 +330,17 @@ impl UiRenderer<'_> {
             warp,
             self.theme.accent_bright,
             warp_hint,
+        );
+
+        self.toggle_row_hinted(
+            frame,
+            row(),
+            ComponentId::SettingAllowInsecureToggle,
+            "Allow Insecure",
+            self.settings.allow_insecure,
+            "ON · LESS SECURE",
+            "OFF",
+            "connects to more servers, but less secure",
         );
 
         self.group_heading(frame, row(), "APPEARANCE");
@@ -943,6 +954,30 @@ impl UiRenderer<'_> {
         let color = if on { self.theme.ok } else { self.theme.muted };
         let text = if on { on_text } else { off_text };
         self.setting_line(frame, area, id, label, text, color, "click to toggle");
+    }
+
+    /// A toggle with its own hint, and a warning colour while it is on: for a
+    /// switch whose "on" lowers security, so the page does not show it in the
+    /// same green as a harmless one.
+    #[allow(clippy::too_many_arguments)]
+    fn toggle_row_hinted(
+        &mut self,
+        frame: &mut Frame,
+        area: Rect,
+        id: ComponentId,
+        label: &str,
+        on: bool,
+        on_text: &str,
+        off_text: &str,
+        hint: &str,
+    ) {
+        let color = if on {
+            self.theme.warn
+        } else {
+            self.theme.muted
+        };
+        let text = if on { on_text } else { off_text };
+        self.setting_line(frame, area, id, label, text, color, hint);
     }
 
     /// A row whose value is clicked to edit or cycle.

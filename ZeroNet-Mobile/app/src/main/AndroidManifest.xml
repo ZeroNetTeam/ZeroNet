@@ -68,6 +68,11 @@
                 <data android:scheme="hy2" />
                 <data android:scheme="tuic" />
                 <data android:scheme="anytls" />
+                <data android:scheme="zerov1" />
+                <data android:scheme="tide" />
+                <data android:scheme="juicity" />
+                <data android:scheme="masterdns" />
+                <data android:scheme="warp" />
             </intent-filter>
         </activity>
 
