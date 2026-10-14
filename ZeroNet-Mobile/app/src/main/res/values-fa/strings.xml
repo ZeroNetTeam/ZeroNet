@@ -191,6 +191,8 @@
     <string name="import_subscription">اشتراک</string>
     <string name="import_links_placeholder">vless://، vmess://، trojan://، ss://…</string>
     <string name="import_result">%1$s اضافه شد · %2$s تکراری · %3$s ناشناخته</string>
+    <string name="import_open_file">باز کردن فایل پیکربندی (.json، .txt)</string>
+    <string name="import_file_unreadable">این فایل را نتوانستم به‌عنوان پیکربندی بخوانم</string>
     <string name="import_error">وارد نشد: %1$s</string>
     <string name="import_sub_url">https://…</string>
     <string name="import_sub_name">نام (اختیاری)</string>

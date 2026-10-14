@@ -11,7 +11,7 @@ class ProtocolLabelTest {
             "hysteria2" to "Hysteria 2", "hy2" to "Hysteria 2", "tuic" to "TUIC", "juicity" to "Juicity",
             "anytls" to "AnyTLS", "zerov1" to "ZeroV1", "masterdns" to "MasterDnsVPN", "socks" to "SOCKS5",
             "wireguard" to "WireGuard", "amnezia-wg" to "AmneziaWG", "warp" to "WARP", "tor" to "Tor",
-            "freedom" to "Direct + fragment",
+            "freedom" to "Serverless",
         )
         names.forEach { (raw, shown) -> assertEquals(raw, shown, protocolLabel(raw)) }
         assertEquals("—", protocolLabel(""))

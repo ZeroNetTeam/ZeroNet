@@ -193,6 +193,8 @@
     <string name="import_subscription">Subscription</string>
     <string name="import_links_placeholder">vless://, vmess://, trojan://, ss://…</string>
     <string name="import_result">Added %1$s · %2$s already here · %3$s not recognised</string>
+    <string name="import_open_file">Open a config file (.json, .txt)</string>
+    <string name="import_file_unreadable">That file could not be read as a config</string>
     <string name="import_error">Couldn’t import: %1$s</string>
     <string name="import_sub_url">https://…</string>
     <string name="import_sub_name">Name (optional)</string>

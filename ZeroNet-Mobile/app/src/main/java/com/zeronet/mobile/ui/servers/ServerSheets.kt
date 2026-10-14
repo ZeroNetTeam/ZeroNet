@@ -1,5 +1,7 @@
 package com.zeronet.mobile.ui.servers
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.expandVertically
@@ -58,6 +60,7 @@ import com.zeronet.mobile.ui.components.TonalButton
 import com.zeronet.mobile.ui.components.ToggleRow
 import com.zeronet.mobile.ui.components.ZeroSheet
 import com.zeronet.mobile.ui.components.ZeroTextField
+import com.zeronet.mobile.ui.util.readImportFile
 import com.zeronet.mobile.ui.icons.ZeroIcons
 import com.zeronet.mobile.ui.model.countryLabel
 import com.zeronet.mobile.ui.model.kindLabel
@@ -315,6 +318,8 @@ enum class ImportMode { Links, Subscription }
  * subscription URL the app refreshes itself.
  */
 /** The profile that connects directly with the site name hidden from the filter (no server). */
+/** Text longer than this is imported without being shown in the text box. */
+private const val LARGE_IMPORT_CHARS = 20_000
 private const val SERVERLESS_LINK = "direct://?hide=auto#Serverless"
 
 @Composable
@@ -340,6 +345,24 @@ fun ImportSheet(
         var result by remember { mutableStateOf<ImportResult?>(null) }
         var urlError by remember { mutableStateOf(false) }
         var scanning by rememberSaveable { mutableStateOf(false) }
+        // A config file (`.json`, or any text file with links in it): read and
+        // imported at once. The picker accepts every type because configs are
+        // saved as application/json, text/plain or untyped, by app and by phone.
+        val context = LocalContext.current
+        val fileUnreadable = stringResource(R.string.import_file_unreadable)
+        val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri == null) return@rememberLauncherForActivityResult
+            val content = readImportFile(context, uri)
+            if (content == null) {
+                result = ImportResult(0, 0, 0, fileUnreadable)
+            } else {
+                busy = true
+                scope.launch {
+                    result = onImport(content)
+                    busy = false
+                }
+            }
+        }
         // A subscription link goes to the subscription form; config links
         // join whatever is already in the links box.
         fun takeScan(raw: String) {
@@ -358,7 +381,15 @@ fun ImportSheet(
         LaunchedEffect(initialText) {
             if (!initialText.isNullOrBlank()) {
                 val t = initialText.trim()
-                if (t.startsWith("http://") || t.startsWith("https://")) {
+                if (t.length > LARGE_IMPORT_CHARS && !t.startsWith("http")) {
+                    // A whole file's worth: imported at once. A text box
+                    // holding megabytes would only make the sheet slow.
+                    mode = ImportMode.Links
+                    busy = true
+                    result = null
+                    result = onImport(t)
+                    busy = false
+                } else if (t.startsWith("http://") || t.startsWith("https://")) {
                     mode = ImportMode.Subscription
                     subUrl = t
                 } else {
@@ -393,6 +424,13 @@ fun ImportSheet(
                     { scanning = true },
                     Modifier.fillMaxWidth(),
                     icon = ZeroIcons.Qr,
+                )
+                Spacer(Modifier.height(8.dp))
+                TonalButton(
+                    stringResource(R.string.import_open_file),
+                    { mode = ImportMode.Links; filePicker.launch(arrayOf("*/*")) },
+                    Modifier.fillMaxWidth(),
+                    enabled = !busy,
                 )
                 Spacer(Modifier.height(8.dp))
                 TonalButton(stringResource(R.string.warp_open), onWarp, Modifier.fillMaxWidth())

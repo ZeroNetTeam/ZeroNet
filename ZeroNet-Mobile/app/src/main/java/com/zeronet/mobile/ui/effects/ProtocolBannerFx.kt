@@ -30,7 +30,7 @@ object ProtocolBannerFx {
         "amnezia-wg", "wireguard" -> "WIREGUARD"
         "socks" -> "SOCKS5"
         "tor" -> "TOR"
-        "freedom" -> "FRAGMENT"
+        "freedom" -> "SERVERLESS"
         else -> null
     }
 

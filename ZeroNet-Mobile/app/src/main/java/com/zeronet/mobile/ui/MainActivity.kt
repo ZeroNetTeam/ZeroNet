@@ -28,6 +28,8 @@ import com.zeronet.mobile.model.AutoConnect
 import com.zeronet.mobile.model.ConnState
 import com.zeronet.mobile.model.Settings
 import com.zeronet.mobile.ui.shell.Tab
+import com.zeronet.mobile.ui.util.MAX_IMPORT_FILE_BYTES
+import com.zeronet.mobile.ui.util.readImportFile
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
@@ -127,14 +129,26 @@ class MainActivity : ComponentActivity(), PlatformActions {
 
     /** Shared text or a tapped vless:// (etc.) link: open Servers with the import sheet prefilled. */
     private fun handleIntent(intent: Intent?) {
-        val text = when (intent?.action) {
-            Intent.ACTION_SEND -> intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
-            Intent.ACTION_VIEW -> intent.dataString
+        // A file (shared, or opened from a file manager) arrives as an address
+        // to read; text and links arrive as themselves.
+        val fileUri: Uri? = when (intent?.action) {
+            Intent.ACTION_SEND ->
+                if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                else @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            Intent.ACTION_VIEW -> intent.data?.takeIf { it.scheme == "content" || it.scheme == "file" }
+            else -> null
+        }
+        val text = when {
+            fileUri != null -> readImportFile(this, fileUri)
+            intent?.action == Intent.ACTION_SEND -> intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+            intent?.action == Intent.ACTION_VIEW -> intent.dataString
             else -> null
         }?.trim()
         if (text.isNullOrEmpty()) return
         // Links shared from browsers/messengers can be huge; the import sheet only needs text.
-        controller.pendingImport = text.take(MAX_IMPORT_CHARS)
+        // A file may be a whole subscription; cutting it would leave half a
+        // JSON document, which imports as nothing.
+        controller.pendingImport = text.take(if (fileUri != null) MAX_IMPORT_FILE_BYTES else MAX_IMPORT_CHARS)
         controller.tab = Tab.Servers
     }
 

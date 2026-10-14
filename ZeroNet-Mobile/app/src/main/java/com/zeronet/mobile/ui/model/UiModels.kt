@@ -84,8 +84,8 @@ fun protocolLabel(p: String): String = when (p.lowercase(Locale.ROOT)) {
     "amnezia-wg" -> "AmneziaWG"
     "warp" -> "WARP"
     "tor" -> "Tor"
-    // A `direct://` profile: no server, only a fragmented hello.
-    "freedom" -> "Direct + fragment"
+    // A `direct://` profile has no server, only a fragmented hello; the app calls it Serverless.
+    "freedom" -> "Serverless"
     "" -> "—"
     else -> p
 }

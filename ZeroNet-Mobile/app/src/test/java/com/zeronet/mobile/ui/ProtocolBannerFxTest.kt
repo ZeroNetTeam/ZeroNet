@@ -24,6 +24,8 @@ class ProtocolBannerFxTest {
     @Test fun `a protocol that carries itself gets nothing added`() {
         assertEquals("HYSTERIA \u06F2", label("hysteria2", "quic", "tls"))
         assertEquals("TUIC", label("tuic", "quic", "tls"))
+        // A direct:// profile has no server, so the banner says Serverless, not how it hides.
+        assertEquals("SERVERLESS", label("freedom", "tcp", "none"))
         assertEquals("ANYTLS", label("anytls", "tcp", "tls"))
         assertEquals("MASTERDNSVPN", label("masterdns", "tcp", "none"))
         assertEquals("WIREGUARD", label("amnezia-wg"))
