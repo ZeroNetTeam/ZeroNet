@@ -351,7 +351,7 @@ fn logging() {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(
                 tracing_subscriber::EnvFilter::try_from_env("ZRAY_LOG")
-                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn,boringtun=error")),
             )
             .try_init();
     });

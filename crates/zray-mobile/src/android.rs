@@ -283,7 +283,17 @@ mod logging {
             .with_ansi(false)
             .with_thread_names(true)
             .with_writer(Mutex::new(file));
-        let subscriber = Registry::default().with(filter).with(file_layer);
+        // A WireGuard handshake that gets no answer (a blocked WARP endpoint
+        // the discovery job is probing) makes `boringtun` log a warning for
+        // every retry. The probe's own result is what matters, so only that
+        // library's errors are kept.
+        let quiet = tracing_subscriber::filter::Targets::new()
+            .with_default(LevelFilter::TRACE)
+            .with_target("boringtun", LevelFilter::ERROR);
+        let subscriber = Registry::default()
+            .with(filter)
+            .with(quiet)
+            .with(file_layer);
         #[cfg(target_os = "android")]
         let subscriber = subscriber.with(logcat::Logcat);
         tracing::subscriber::set_global_default(subscriber)
