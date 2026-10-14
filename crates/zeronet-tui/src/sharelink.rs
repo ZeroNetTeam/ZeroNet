@@ -110,6 +110,10 @@ fn retag(link: &str, remark: &str) -> String {
 }
 
 fn synthesize(outbound: &serde_json::Value, remark: &str) -> Result<String, String> {
+    // A stored profile may be in Xray's simplified (flat) form; the builders
+    // below read the nested one.
+    let nested = zero_config::nested_outbound(outbound);
+    let outbound = nested.as_ref().unwrap_or(outbound);
     let protocol = outbound
         .get("protocol")
         .and_then(|p| p.as_str())
@@ -216,6 +220,9 @@ fn stream_query(outbound: &serde_json::Value) -> Vec<(String, String)> {
         "grpc" => {
             if let Some(g) = stream.get("grpcSettings") {
                 push_str(&mut params, "serviceName", g.get("serviceName"));
+                if g.get("multiMode").and_then(|m| m.as_bool()) == Some(true) {
+                    params.push(("mode".into(), "multi".into()));
+                }
             }
         }
         "xhttp" | "splithttp" => {
@@ -255,7 +262,13 @@ fn synth_vless(outbound: &serde_json::Value, remark: &str) -> Result<String, Str
         .and_then(|i| i.as_str())
         .ok_or("vless user has no id")?;
 
-    let mut params = vec![("encryption".to_string(), "none".to_string())];
+    // The profile's own VLESS Encryption setting, or "none".
+    let encryption = user
+        .get("encryption")
+        .and_then(|e| e.as_str())
+        .filter(|setting| !setting.is_empty())
+        .unwrap_or("none");
+    let mut params = vec![("encryption".to_string(), encryption.to_string())];
     if let Some(flow) = user.get("flow").and_then(|f| f.as_str()) {
         if !flow.is_empty() && flow != "none" {
             params.push(("flow".into(), flow.into()));
@@ -603,6 +616,33 @@ mod tests {
         let parsed = zero_config::parse_link(&share.uri)
             .unwrap_or_else(|e| panic!("{} did not parse: {e}", share.uri));
         assert_eq!(parsed.remark, "SS Node");
+    }
+
+    #[test]
+    fn a_flat_encrypted_grpc_profile_shares_as_the_link_it_came_from() {
+        let profile = serde_json::json!({
+            "outbounds": [{
+                "tag": "proxy",
+                "protocol": "vless",
+                "settings": {"address": "198.51.100.7", "port": 443,
+                    "id": "245abd35-7efa-4bc8-85d4-a04f3798329f",
+                    "encryption": "mlkem768x25519plus.native.0rtt.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"},
+                "streamSettings": {"network": "grpc", "security": "tls",
+                    "tlsSettings": {"serverName": "h.example"},
+                    "grpcSettings": {"serviceName": "svc", "multiMode": true}}
+            }]
+        })
+        .to_string();
+        let share = share_uri(&profile, "Flat").unwrap();
+        assert!(
+            share
+                .uri
+                .contains("encryption=mlkem768x25519plus.native.0rtt."),
+            "{}",
+            share.uri
+        );
+        assert!(share.uri.contains("mode=multi"), "{}", share.uri);
+        assert!(share.uri.contains("@198.51.100.7:443"), "{}", share.uri);
     }
 
     #[test]

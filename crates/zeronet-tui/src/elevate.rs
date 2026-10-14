@@ -344,6 +344,12 @@ fn outbound_server_ip(outbound: &serde_json::Value) -> Option<String> {
         return host_from_link(link);
     }
     let settings = outbound.get("settings")?;
+    // Xray's simplified form keeps the address in `settings` itself.
+    if let Some(address) = settings.get("address").and_then(|a| a.as_str()) {
+        if address.parse::<std::net::IpAddr>().is_ok() {
+            return Some(address.to_string());
+        }
+    }
     for key in ["vnext", "servers"] {
         if let Some(entries) = settings.get(key).and_then(|v| v.as_array()) {
             for entry in entries {

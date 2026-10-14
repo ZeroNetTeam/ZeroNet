@@ -83,6 +83,11 @@ async fn real_delay_inner(socks_port: u16) -> Result<Duration, String> {
         .read_exact(&mut reply)
         .await
         .map_err(|e| format!("the local proxy closed the connection: {e}"))?;
+    if reply[1] == 0x04 {
+        return Err(
+            "the server could not be reached: check that it is running and not blocked here".into(),
+        );
+    }
     if reply[1] != 0x00 {
         return Err(format!(
             "the proxy could not open a connection (SOCKS code {})",
@@ -206,12 +211,23 @@ pub async fn tcp_ping(host: &str, port: u16, timeout: Duration) -> Option<f64> {
     let addr = match host.parse::<std::net::IpAddr>() {
         Ok(ip) => std::net::SocketAddr::new(ip, port),
         Err(_) => {
-            let mut resolved =
-                tokio::time::timeout_at(deadline, tokio::net::lookup_host((host, port)))
-                    .await
-                    .ok()?
-                    .ok()?;
-            resolved.next()?
+            // The runtime's own lookup, not the system's alone: an ISP
+            // resolver answers a filtered name with a block page (a dead
+            // address, in IPv4 and in IPv6 form), and a ping to that reads
+            // as an unreachable server while the tunnel, which resolves
+            // properly, works. IPv4 first, as on a phone with no IPv6.
+            let mut resolved = tokio::time::timeout_at(
+                deadline,
+                zero_runtime::outbound::resolve_endpoint(
+                    &zero_core::Address::parse_host(host),
+                    port,
+                ),
+            )
+            .await
+            .ok()?
+            .ok()?;
+            resolved.sort_by_key(|address| address.is_ipv6());
+            *resolved.first()?
         }
     };
 

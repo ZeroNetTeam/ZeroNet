@@ -1302,6 +1302,10 @@ impl<'a> App<'a> {
         if !self.caps.animations {
             return false;
         }
+        // The "My server" page: a screen settling in, or a wait shown moving.
+        if self.active_tab == ActiveTab::Servers && self.servers.animating(now) {
+            return true;
+        }
         // The update dialog's light sweep and progress sheen.
         if matches!(
             self.modal_state,
@@ -1821,7 +1825,11 @@ impl<'a> App<'a> {
         if self.active_tab == ActiveTab::Servers
             && !self.modal_state.is_active()
             && !self.filter_focused
-            && !(key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL))
+            // Ctrl+C quits, unless something on this page is selected: then it
+            // copies, as in any other app.
+            && !(key.code == KeyCode::Char('c')
+                && key.modifiers.contains(KeyModifiers::CONTROL)
+                && !self.servers.wants_ctrl_c())
         {
             if self.servers.typing()
                 && key.code == KeyCode::Char('v')
@@ -4190,9 +4198,13 @@ impl App<'_> {
             return;
         }
 
-        match std::fs::read_to_string(&path) {
-            Ok(text) => {
-                if let Err(e) = self.import_text(&text) {
+        match std::fs::read(&path) {
+            Ok(bytes) => {
+                // Read as text whatever the file is called, and lossily: a
+                // config saved in an odd encoding should still show what it
+                // can rather than refuse to open.
+                let text = String::from_utf8_lossy(&bytes);
+                if let Err(e) = self.import_content(&text) {
                     self.toasts.error(format!("Import failed: {e}"));
                 }
             }
@@ -4240,34 +4252,36 @@ impl App<'_> {
     /// subscription body, and a raw Xray JSON config — because all four are
     /// things people actually paste.
     fn import_text(&mut self, text: &str) -> Result<()> {
-        let trimmed = text.trim();
+        // A pasted line that is the path of a file (what a terminal pastes
+        // when a file is dropped on it) means the file's contents.
+        if let Some(path) = zeronet_tui::json_import::pasted_file_path(text) {
+            self.import_from_file(&path.to_string_lossy());
+            return Ok(());
+        }
+        self.import_content(text)
+    }
 
-        // Raw JSON config.
+    /// [`Self::import_text`] for text that is already the content, never a
+    /// path: what a file holds is imported as it is, even if it names a file.
+    fn import_content(&mut self, text: &str) -> Result<()> {
+        let trimmed = text.trim_start_matches('\u{feff}').trim();
+
+        // JSON: one config, or an array of them (a panel's JSON subscription).
         if trimmed.starts_with('{') || trimmed.starts_with('[') {
-            if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
-                let json = serde_json::to_string_pretty(&value)?;
-                // Verify it before storing. A profile that cannot compile
-                // used to sit in the list looking normal and only fail at
-                // connect time, with a raw engine message.
-                if let Err(reason) =
-                    zeronet_tui::daemon::validate_profile(&json, &self.engine_options())
-                {
-                    self.toasts
-                        .error(format!("That config will not run: {reason}"));
+            match zeronet_tui::json_import::profiles_from_json(trimmed) {
+                Ok(profiles) => return self.import_json_profiles(profiles),
+                // Valid JSON in a shape a link can express (a sing-box
+                // config, a panel's outbound list) imports as its links;
+                // anything else says what was wrong with it.
+                Err(reason) => {
+                    if let Some(links) = zero_discovery::json_subscription::links_from_json(trimmed)
+                        .filter(|links| !links.is_empty())
+                    {
+                        return self.import_content(&links.join("\n"));
+                    }
+                    self.toasts.error(format!("Nothing importable: {reason}."));
                     return Ok(());
                 }
-                let id = self.db.insert_config(
-                    "Imported JSON Profile",
-                    "custom",
-                    "proxy",
-                    443,
-                    &json,
-                    None,
-                )?;
-                self.reload_configs();
-                self.focus_profile(id);
-                self.toasts.success("Imported a raw JSON profile.");
-                return Ok(());
             }
         }
 
@@ -4315,6 +4329,60 @@ impl App<'_> {
         Ok(())
     }
 
+    /// Store the configs found in a JSON text, each checked to run first.
+    fn import_json_profiles(
+        &mut self,
+        profiles: Vec<std::result::Result<zeronet_tui::json_import::JsonProfile, String>>,
+    ) -> Result<()> {
+        let mut imported = Vec::new();
+        let mut first_problem: Option<String> = None;
+        for entry in profiles {
+            let profile = match entry {
+                Ok(profile) => profile,
+                Err(reason) => {
+                    first_problem.get_or_insert(reason);
+                    continue;
+                }
+            };
+            // Verify it before storing. A profile that cannot compile would
+            // sit in the list looking normal and only fail at connect time,
+            // with a raw engine message.
+            if let Err(reason) =
+                zeronet_tui::daemon::validate_profile(&profile.json, &self.engine_options())
+            {
+                first_problem.get_or_insert(format!("{}: {reason}", profile.remark));
+                continue;
+            }
+            imported.push(self.db.insert_config(
+                &profile.remark,
+                &profile.protocol,
+                &profile.address,
+                profile.port,
+                &profile.json,
+                None,
+            )?);
+        }
+        let skipped = first_problem.as_ref().map_or(0, |_| 1);
+        match (imported.first(), first_problem) {
+            (None, problem) => self.toasts.error(format!(
+                "That config will not run: {}",
+                problem.unwrap_or_else(|| "nothing in it".into())
+            )),
+            (Some(first), problem) => {
+                self.reload_configs();
+                self.focus_profile(*first);
+                self.toasts.success(match problem {
+                    None => format!("Imported {}.", count(imported.len(), "profile", "profiles")),
+                    Some(_) => format!(
+                        "Imported {}, skipped {skipped}+ that would not run.",
+                        count(imported.len(), "profile", "profiles")
+                    ),
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// Turn a parsed share link into a stored profile.
     fn store_share_link(&self, link: &zero_config::ShareLink) -> Result<i64> {
         let (json, remark, proto_name, address, port) = self.profile_from_link(link)?;
@@ -4357,7 +4425,11 @@ impl App<'_> {
         zeronet_tui::daemon::validate_profile(&json, &self.engine_options())
             .map_err(|reason| anyhow::anyhow!("{remark}: {reason}"))?;
 
-        let (address, port) = endpoint_of(&link.outbound.protocol);
+        let (address, port) = link
+            .outbound
+            .endpoint()
+            .map(|(address, port)| (address.host_string(), port))
+            .unwrap_or_else(|| endpoint_of(&link.outbound.protocol));
         Ok((json, remark, proto_name, address, port))
     }
 
@@ -5582,6 +5654,9 @@ fn endpoint_of(protocol: &zero_config::OutboundProtocol) -> (String, u16) {
         zero_config::OutboundProtocol::Trojan(t) => (t.address.to_string(), t.port),
         zero_config::OutboundProtocol::Shadowsocks(s) => (s.address.to_string(), s.port),
         zero_config::OutboundProtocol::Vmess(m) => (m.address.to_string(), m.port),
+        zero_config::OutboundProtocol::Tide(t) => (t.address.to_string(), t.port),
+        // A MasterDNS server is named by its tunnel domain; queries go out on port 53.
+        zero_config::OutboundProtocol::MasterDns(m) => (m.domain.to_string(), 53),
         _ => ("proxy".into(), 443),
     }
 }

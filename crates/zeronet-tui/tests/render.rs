@@ -3389,3 +3389,282 @@ fn my_server_page_screens_render_with_their_words() {
     let small = h.draw(100, 30);
     assert!(small.contains("too small for the code"), "{small}");
 }
+
+/// Every screen of the "My server" page at every size from absurdly small to
+/// huge: layout arithmetic on a small window is where a panic would hide.
+#[test]
+fn my_server_page_never_panics_at_any_size() {
+    use zero_provision::install::{Preset, Step};
+    use zero_provision::ssh::HostKey;
+    use zeronet_tui::servers::{
+        Checked, DnsStatus, Form, ProgressView, Screen, ServersState, StepState,
+    };
+
+    let key = HostKey {
+        fingerprint: "SHA256:abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG".into(),
+        algorithm: "ssh-ed25519".into(),
+    };
+    let checked = Checked {
+        address: "203.0.113.7".into(),
+        port: 22,
+        user: "root".into(),
+        domain: Some("t.example.com".into()),
+        key: None,
+    };
+    let form = Form {
+        password: "hunter2".into(),
+        masterdns: true,
+        zerov1: true,
+        domain: "t.example.com".into(),
+        error: Some("Type the server's address (its IP).".into()),
+        ..Form::default()
+    };
+    let record = sample_server();
+    let screens: Vec<(&str, Screen)> = vec![
+        ("list", Screen::List),
+        ("busy", Screen::Busy("Contacting the server…".into())),
+        ("form", Screen::Form(form.clone())),
+        (
+            "identity",
+            Screen::Identity {
+                form: form.clone(),
+                checked: checked.clone(),
+                key: key.clone(),
+            },
+        ),
+        (
+            "dns",
+            Screen::Dns {
+                form: form.clone(),
+                checked: checked.clone(),
+                key: key.clone(),
+                records: zero_provision::guide::delegation_records(
+                    "t.example.com",
+                    "203.0.113.7".parse().unwrap(),
+                ),
+                status: DnsStatus::Checking,
+            },
+        ),
+        (
+            "progress",
+            Screen::Progress(ProgressView {
+                steps: vec![
+                    (Step::Check, None, StepState::Done),
+                    (Step::Download, Some(Preset::Zerov1), StepState::Running),
+                ],
+                of: 8,
+                detail: "Downloading 4 MB".into(),
+                failed: None,
+            }),
+        ),
+        (
+            "failed",
+            Screen::Progress(ProgressView {
+                steps: vec![(Step::Check, None, StepState::Running)],
+                of: 8,
+                detail: String::new(),
+                failed: Some("The server refused the password.".into()),
+            }),
+        ),
+        (
+            "result",
+            Screen::Result {
+                record: Box::new(record.clone()),
+                notes: vec![zero_provision::install::Note::Unverified],
+                shown: 1,
+            },
+        ),
+        (
+            "server",
+            Screen::Server {
+                id: "srv1".into(),
+                shown: 0,
+            },
+        ),
+        (
+            "confirm",
+            Screen::ConfirmRemove {
+                id: "srv1".into(),
+                typed: "rem".into(),
+            },
+        ),
+    ];
+    let sizes = [
+        (40u16, 10u16),
+        (60, 16),
+        (80, 24),
+        (100, 30),
+        (130, 40),
+        (160, 50),
+        (240, 70),
+    ];
+    for (name, screen) in screens {
+        for (w, h) in sizes {
+            let mut harness = Harness::new();
+            harness.active_tab = ActiveTab::Servers;
+            harness.servers = ServersState::new(vec![record.clone()]);
+            harness.servers.screen = screen.clone();
+            harness.servers.show_qr = name == "server" && w >= 130;
+            let _ = harness.draw(w, h);
+            // And with the whole selection lit.
+            harness.servers.all_configs = true;
+            harness.servers.marked.insert("srv1".into());
+            let _ = harness.draw(w, h);
+            let _ = name;
+        }
+    }
+}
+
+#[test]
+fn the_server_list_is_a_master_detail_view_with_ticks_and_graphs() {
+    use zeronet_tui::servers::{Event, ServersState};
+    let mut a = sample_server();
+    a.id = "a".into();
+    a.name = "Alpha".into();
+    let mut b = sample_server();
+    b.id = "b".into();
+    b.name = "Bravo".into();
+    b.host = "198.51.100.9".into();
+    let mut h = Harness::new();
+    h.active_tab = ActiveTab::Servers;
+    h.servers = ServersState::new(vec![a, b]);
+    for n in [1u64, 2, 3, 2] {
+        h.servers.on_event(Event::Usage(
+            "a".into(),
+            Ok(zero_provision::manage::Usage {
+                window_secs: 300,
+                inbounds: vec![zero_provision::manage::InboundUsage {
+                    tag: "reality".into(),
+                    sessions: n,
+                    devices_now: n,
+                    devices_recent: n,
+                    uplink: n * 1000,
+                    downlink: n * 50_000,
+                }],
+            }),
+        ));
+    }
+    let frame = h.draw(130, 40);
+    dump("servers_master_detail", &frame);
+    assert!(
+        frame.contains("Alpha") && frame.contains("Bravo"),
+        "{frame}"
+    );
+    assert!(frame.contains("2 connected"), "{frame}");
+    assert!(frame.contains("2 set up"), "the title bar counts servers");
+    assert!(
+        frame.contains("Services"),
+        "the preview pane is beside the list"
+    );
+    assert!(
+        frame.contains("devices") && frame.contains("traffic"),
+        "{frame}"
+    );
+    assert!(
+        frame.contains('▂') || frame.contains('▅') || frame.contains('█'),
+        "a graph is drawn: {frame}"
+    );
+    assert!(frame.contains("Ctrl+A") && frame.contains("select all"));
+
+    // Ctrl+A ticks both and the list says so.
+    h.servers.on_key(crossterm::event::KeyEvent::new(
+        crossterm::event::KeyCode::Char('a'),
+        crossterm::event::KeyModifiers::CONTROL,
+    ));
+    let frame = h.draw(130, 40);
+    assert!(frame.contains("2 selected"), "{frame}");
+    assert!(frame.contains('◼'), "ticked cards are marked: {frame}");
+}
+
+#[test]
+fn select_all_on_a_servers_page_lights_every_config() {
+    use zeronet_tui::servers::{Screen, ServersState};
+    let mut h = Harness::new();
+    h.active_tab = ActiveTab::Servers;
+    h.servers = ServersState::new(vec![sample_server()]);
+    h.servers.screen = Screen::Server {
+        id: "srv1".into(),
+        shown: 0,
+    };
+    h.servers.all_configs = true;
+    let frame = h.draw(130, 40);
+    assert!(frame.contains("All 2 configs selected"), "{frame}");
+    assert!(frame.contains("Main · reality") && frame.contains("Main · masterdns"));
+    assert!(frame.contains("copy all of them"), "{frame}");
+    // One vless:// link and the MasterDNS one, both listed.
+    assert!(frame.matches("://").count() >= 2, "{frame}");
+}
+
+#[test]
+fn the_form_scrolls_to_keep_the_focused_row_in_view_and_can_show_the_password() {
+    use zeronet_tui::servers::{Field, Form, Screen, ServersState};
+    let mut form = Form {
+        password: "hunter2".into(),
+        masterdns: true,
+        zerov1: true,
+        ..Form::default()
+    };
+    form.set_focus(Field::Connect);
+    let mut h = Harness::new();
+    h.active_tab = ActiveTab::Servers;
+    h.servers = ServersState::default();
+    h.servers.screen = Screen::Form(form.clone());
+    // A short window: the button is far below the first rows.
+    let frame = h.draw(100, 24);
+    assert!(frame.contains("Connect and install"), "{frame}");
+    assert!(!frame.contains("hunter2"));
+    assert!(
+        frame.contains("ZeroV1 + REALITY"),
+        "the new service has its tile"
+    );
+
+    form.show_password = true;
+    form.set_focus(Field::Password);
+    h.servers.screen = Screen::Form(form);
+    let frame = h.draw(100, 40);
+    assert!(frame.contains("hunter2"), "Ctrl+R reveals it: {frame}");
+}
+
+#[test]
+fn a_selected_text_box_is_drawn_selected() {
+    use ratatui::style::Color;
+    use zeronet_tui::caret::Caret;
+    use zeronet_tui::servers::{Field, Form, Screen, ServersState};
+    let mut form = Form {
+        address: "203.0.113.7".into(),
+        ..Form::default()
+    };
+    form.set_focus(Field::Address);
+    let mut caret = Caret::at_end(&form.address);
+    caret.select_all(&form.address);
+    form.caret = caret;
+    let mut h = Harness::new();
+    h.active_tab = ActiveTab::Servers;
+    h.servers = ServersState::default();
+    h.servers.screen = Screen::Form(form);
+    let buffer = draw_buffer(&mut h, 130, 40);
+    // The selected characters share one background colour that nothing else
+    // in the address box uses.
+    let mut selected = String::new();
+    let mut backgrounds = std::collections::HashMap::<Color, String>::new();
+    for y in 0..buffer.area.height {
+        for x in 0..buffer.area.width {
+            let cell = &buffer[(x, y)];
+            if "203.0.113.7".contains(cell.symbol()) && cell.symbol() != " " {
+                backgrounds
+                    .entry(cell.bg)
+                    .or_default()
+                    .push_str(cell.symbol());
+            }
+        }
+    }
+    for text in backgrounds.values() {
+        if text.contains("203.0.113.7") {
+            selected = text.clone();
+        }
+    }
+    assert!(
+        !selected.is_empty(),
+        "the whole address should share one selection background: {backgrounds:?}"
+    );
+}

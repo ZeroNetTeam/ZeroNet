@@ -106,6 +106,9 @@ fn endpoint_of(protocol: &zero_config::OutboundProtocol) -> (String, u16) {
         zero_config::OutboundProtocol::Juicity(j) => (j.address.to_string(), j.port),
         zero_config::OutboundProtocol::AnyTls(a) => (a.address.to_string(), a.port),
         zero_config::OutboundProtocol::Socks(k) => (k.address.to_string(), k.port),
+        zero_config::OutboundProtocol::Tide(t) => (t.address.to_string(), t.port),
+        // A MasterDNS server is named by its tunnel domain; queries go out on port 53.
+        zero_config::OutboundProtocol::MasterDns(m) => (m.domain.to_string(), 53),
         _ => ("proxy".into(), 443),
     }
 }
@@ -443,6 +446,17 @@ mod tests {
         assert_eq!(feed.profiles[0].port, 443);
         // The original link is kept so the profile can be re-shared.
         assert!(feed.profiles[0].link.starts_with("vless://"));
+    }
+
+    #[test]
+    fn a_tide_or_masterdns_profile_shows_its_real_host() {
+        let body = "zerov1://IJs62pjNyTJ6lcQI2RTJgw@203.0.113.9:443?key=8IlzK3FhAVnYNxXhX2Xvo8xANX6TjE8-zdHPObMR02A&path=%2Fstatic%2Fabc&security=tls&sni=example.com#Tide\nmasterdns://k3y@t.example.com?server=203.0.113.7&resolvers=8.8.8.8#DNS";
+        let feed = parse_feed(body);
+        assert_eq!(feed.profiles.len(), 2);
+        assert_eq!(feed.profiles[0].address, "203.0.113.9");
+        assert_eq!(feed.profiles[0].port, 443);
+        assert_eq!(feed.profiles[1].address, "t.example.com");
+        assert_eq!(feed.profiles[1].port, 53);
     }
 
     #[test]
