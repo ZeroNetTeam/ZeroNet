@@ -30,7 +30,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 /// Where releases are published.
-pub const REPO: &str = "zeghostwriter/ZeroNet";
+pub const REPO: &str = "ZeroNetTeam/ZeroNet-Desktop";
 
 /// This build's version. Release builds get it from the tag
 /// (`ZERONET_VERSION`, set by the release workflow, via `build.rs`); a local
@@ -853,7 +853,7 @@ mod tests {
 
     const RELEASE: &str = r###"{
         "tag_name": "v0.1.5",
-        "html_url": "https://github.com/zeghostwriter/ZeroNet/releases/tag/v0.1.5",
+        "html_url": "https://github.com/ZeroNetTeam/ZeroNet-Desktop/releases/tag/v0.1.5",
         "body": "## Download\n\n| | |\n|---|---|\n| Windows | `x.zip` |\n\n## What's Changed\n* Server tests: survive forged DNS by @someone in https://github.com/x/y/pull/10\n* README: fix layout by @someone in https://github.com/x/y/pull/11\n\n## New Contributors\n* @a made their first contribution in https://github.com/x/y/pull/1\n\n**Full Changelog**: https://github.com/x/y/compare/v0.1.4...v0.1.5",
         "assets": [
             {"name": "ZeroNet-Windows-x64.exe", "size": 123, "browser_download_url": "https://github.com/x/y/releases/download/v0.1.5/ZeroNet-Windows-x64.exe"},

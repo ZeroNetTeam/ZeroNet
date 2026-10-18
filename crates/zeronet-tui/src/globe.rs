@@ -25,14 +25,13 @@ use ratatui::widgets::canvas::{Context, Line, Points};
 use crate::connect_orb::OrbState;
 use crate::theme::lerp_color;
 
-/// The coastlines, shared with the Android app so both draw the same Earth:
+/// The coastlines, a copy of the Android app's so both draw the same Earth:
 /// `u16` ring count, then per ring a `u16` point count and `i16` latitude and
 /// longitude in 1/100 degree, little-endian. Natural Earth, public domain.
-static LAND: &[u8] = include_bytes!("../../../ZeroNet-Mobile/app/src/main/assets/globe/land.bin");
+static LAND: &[u8] = include_bytes!("../assets/globe/land.bin");
 
 /// `CC latitude longitude` per line: a label point for each country.
-static COUNTRIES: &str =
-    include_str!("../../../ZeroNet-Mobile/app/src/main/assets/globe/countries.txt");
+static COUNTRIES: &str = include_str!("../assets/globe/countries.txt");
 
 /// Points along a route.
 const ARC_POINTS: usize = 72;

@@ -1,4 +1,4 @@
-# Dependency policy for Zray-Core (PLAN-01 phase 0).
+# Dependency policy for ZeroNet-Desktop.
 # Keep this file deliberately explicit: a new license or source must be
 # reviewed instead of silently entering the release graph.
 
@@ -39,6 +39,8 @@ allow = [
   # Boost: permissive, OSI approved. clipboard-win / error-code, via arboard
   # (the TUI's clipboard on Windows).
   "BSL-1.0",
+  # This repository's own licence (the workspace crates are checked too).
+  "GPL-3.0-only",
   "CDLA-Permissive-2.0",
   "CC0-1.0",
   "ISC",
@@ -56,4 +58,5 @@ allow = [
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+# The engine, pinned by Cargo.lock.
+allow-git = ["https://github.com/ZeroNetTeam/Zray-Core"]

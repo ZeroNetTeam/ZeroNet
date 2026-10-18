@@ -4,25 +4,11 @@
 **/*.rs.bk
 *.log
 
-# ---- Fuzzing (regenerable artifacts & corpus) ----
-/fuzz/target
-/fuzz/artifacts
-/fuzz/corpus
-
-# ---- Bundled reference binary / vendored oracles (large, not source) ----
+# ---- Local-only material ----
 /.xray-oracle
 /reference
 /local
-/assets
-/squashfs-root
-
-# ---- Nested / sibling projects with their own repos ----
-/Zero-IP-Scanner
-# Local study of the BPB Worker Panel (reference only, not shipped)
-/bpb-study
-# Local dev / test / bootstrap scripts (not shipped in the public repo)
 /scripts
-# Local git backups made while consolidating into one repo
 **/.git-backup
 **/*.git.bak
 
@@ -35,26 +21,14 @@ AGENTS.md
 CLAUDE.md
 .opencode/
 
-# ---- Android (ZeroNet-Mobile also has its own .gitignore) ----
-**/.gradle/
-**/.kotlin/
-**/build/
-**/local.properties
-**/*.keystore
-**/*.jks
-keystore.properties
-signing.properties
-# Native libs are build outputs of zray-core
-ZeroNet-Mobile/app/src/main/jniLibs/
+# ---- Written by Zray-Core/tools/link-local.sh ----
+.cargo/
 
 # ---- OS / editor noise ----
 .DS_Store
 .directory
 *.iml
 .idea/
-
-# Personal Cloudflare Worker deployment (kept local, not in the repo)
-/deploy/cloudflare-worker/
 
 # ---- Local changelogs, plans, findings and idea notes (working memory, not shipped) ----
 # Commits, release notes and PR descriptions are where changelog writing lives.

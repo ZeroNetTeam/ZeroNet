@@ -421,7 +421,7 @@ fn update_dialog(phase: zeronet_tui::modal::UpdatePhase) -> ModalState {
     ModalState::Update {
         release: Box::new(zeronet_tui::update::Release {
             version: "9.9.9".into(),
-            page: "https://github.com/zeghostwriter/ZeroNet/releases/tag/v9.9.9".into(),
+            page: "https://github.com/ZeroNetTeam/ZeroNet-Desktop/releases/tag/v9.9.9".into(),
             notes: vec![
                 "Server tests: survive forged DNS".into(),
                 "README: fix right-to-left layout".into(),
