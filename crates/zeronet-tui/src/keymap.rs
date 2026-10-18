@@ -102,7 +102,7 @@ pub enum Command {
     // ---- data
     Refresh,
     TestLatency,
-    /// Search the public feeds and the crowd rankings for a working server,
+    /// Search the public feeds for a working server,
     /// and connect to it when offline.
     FindServers,
     ExportAll,

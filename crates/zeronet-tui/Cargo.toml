@@ -23,7 +23,7 @@ zero-config = { workspace = true }
 zero-runtime = { workspace = true }
 zero-tun = { workspace = true }
 zero-scanner = { workspace = true }
-# The config finder: feed discovery, liveness tests and the crowd rankings.
+# The config finder: feed discovery, liveness tests and the verified list.
 zero-discovery = { workspace = true }
 zero-evasion = { workspace = true }
 zero-security = { workspace = true }

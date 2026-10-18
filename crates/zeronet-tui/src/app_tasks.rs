@@ -40,11 +40,10 @@ const PROBE_DEADLINE: Duration = Duration::from_secs(20);
 const ACTIVE_GAP: Duration = Duration::from_secs(30);
 /// How often the client quietly looks for more servers while it is connected.
 ///
-/// The finder's known-servers step reads the cached crowd rankings and tests
-/// what worked before; only when that is not enough does it fetch feeds, and
-/// the feeds answer conditional requests from the cache. The point is to keep
-/// a supply of backups for the watchdog to switch to — and, when the user
-/// shares results, to report the working servers so others can use them.
+/// The finder's known-servers step tests what worked before; only when that
+/// is not enough does it fetch feeds, and the feeds answer conditional
+/// requests from the cache. The point is to keep a supply of backups for the
+/// watchdog to switch to.
 const AUTO_FIND_INTERVAL: Duration = Duration::from_secs(45 * 60);
 
 /// A system-proxy change for the worker.
@@ -120,12 +119,6 @@ pub(crate) enum BgEvent {
     },
     /// The download finished: where the new version now is, or why not.
     UpdateInstalled(Result<std::path::PathBuf, String>),
-    /// A crowd report of `count` results was sent (the network the relay
-    /// filed it under), or could not be.
-    CrowdReported {
-        count: usize,
-        result: Result<Option<String>, String>,
-    },
     /// A line of progress from the running WARP job.
     WarpProgress(String),
     /// The WARP job finished: what it made, or why it could not.
@@ -502,10 +495,6 @@ impl App<'_> {
             BgEvent::UpdateInstalled(result) => {
                 self.on_update_installed(result);
                 true
-            }
-            BgEvent::CrowdReported { count, result } => {
-                self.on_crowd_reported(count, result);
-                false
             }
             BgEvent::WarpProgress(line) => {
                 self.on_warp_progress(line);
@@ -934,10 +923,9 @@ impl App<'_> {
     /// Look for more servers while connected, occasionally and quietly.
     ///
     /// The supply of backups the watchdog can switch to is what keeps a
-    /// connection recoverable, and the crowd report a search sends is what
-    /// makes the working servers visible to everyone else. It runs only in a
-    /// quiet moment — a search probes hundreds of endpoints and downloads
-    /// feeds, and it must not compete with the user's traffic.
+    /// connection recoverable. It runs only in a quiet moment — a search
+    /// probes hundreds of endpoints and downloads feeds, and it must not
+    /// compete with the user's traffic.
     pub(crate) fn maybe_background_find(&mut self) {
         if self.stats.status != ConnectionStatus::Connected || !self.connection.wants_connection() {
             return;

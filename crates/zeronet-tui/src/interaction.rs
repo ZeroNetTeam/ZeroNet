@@ -93,8 +93,6 @@ pub enum ComponentId {
     /// The version row: check for an update, or reopen the one found.
     SettingCheckUpdates,
     SettingAutoUpdateToggle,
-    /// Share how found servers fared (crowd reports).
-    SettingShareResultsToggle,
     SettingAllowInsecureToggle,
     /// How deep the config finder searches the public feeds.
     SettingFinderDepthCycle,

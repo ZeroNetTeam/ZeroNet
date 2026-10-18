@@ -80,7 +80,7 @@ pub struct Candidate {
     pub id: i64,
     /// Last measured latency, when the client has one.
     pub ping_ms: Option<f64>,
-    /// Found by the config finder (public feed or the crowd's rankings) and
+    /// Found by the config finder (a public feed) and
     /// therefore known to have worked on this network at some point.
     pub found: bool,
 }

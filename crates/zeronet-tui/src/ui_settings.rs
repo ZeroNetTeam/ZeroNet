@@ -19,9 +19,9 @@ const LABEL_WIDTH: usize = 28;
 const VALUE_WIDTH: usize = 20;
 
 /// Rows when Advanced is folded: four headings plus the everyday settings.
-pub(crate) const SETTINGS_ROWS_BASIC: usize = 34;
+pub(crate) const SETTINGS_ROWS_BASIC: usize = 33;
 /// Rows when Advanced is open, including the edge-scanner block.
-pub(crate) const SETTINGS_ROWS: usize = 66;
+pub(crate) const SETTINGS_ROWS: usize = 65;
 
 impl UiRenderer<'_> {
     /// Total lines the settings page needs, for the scrollbar.
@@ -286,15 +286,6 @@ impl UiRenderer<'_> {
         );
 
         self.group_heading(frame, row(), "SERVER FINDER  (F)");
-        self.toggle_row(
-            frame,
-            row(),
-            ComponentId::SettingShareResultsToggle,
-            "Help Others Connect",
-            self.settings.share_results,
-            "SHARING",
-            "OFF",
-        );
         let (depth, hint) = match self.settings.finder_max_tier {
             0 => ("TESTED LIST", "ZeroNet's verified list only"),
             1 => ("QUICK", "+ small public lists"),

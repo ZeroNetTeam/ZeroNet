@@ -24,9 +24,8 @@ pub struct ConfigRecord {
     pub ping_ms: Option<f64>,
     pub last_used: Option<i64>,
     /// Where the profile came from: `user` (imported, typed or from the
-    /// user's own subscription), `found` (the config finder found it in a
-    /// public feed) or `crowd` (other users' rankings). Only `found` and
-    /// `crowd` profiles are ever part of a crowd report.
+    /// user's own subscription) or `found` (the config finder found it in a
+    /// public feed).
     #[serde(default = "user_origin")]
     pub origin: String,
     /// The user excluded this profile from automatic selection: the watchdog
@@ -44,8 +43,8 @@ fn user_origin() -> String {
 pub const ORIGIN_USER: &str = "user";
 
 impl ConfigRecord {
-    /// Whether the finder found this profile (public feed or crowd), so its
-    /// test results may be shared.
+    /// Whether the finder found this profile in a public feed, as opposed to
+    /// the user adding it.
     pub fn is_found(&self) -> bool {
         self.origin != ORIGIN_USER
     }
@@ -185,8 +184,6 @@ pub struct AppSettings {
     pub auto_update_check: bool,
 
     // ------------------------------------------------------- config finder
-    /// Share which public servers the finder saw working (and not), anonymously.
-    pub share_results: bool,
     /// Skip certificate checks on every TLS server, in the finder and when
     /// connected: reaches more servers (self-signed, expired, wrong name),
     /// but anyone on the path can pose as them. Off unless the user turns it on.
@@ -266,7 +263,6 @@ impl Default for AppSettings {
             secret_theme_unlocked: false,
             muted_notices: String::new(),
             auto_update_check: true,
-            share_results: true,
             allow_insecure: false,
             finder_max_tier: 2,
             finder_keep: 40,
@@ -285,7 +281,7 @@ const METRICS_RETENTION_SECS: i64 = 7 * 24 * 60 * 60;
 /// Minimum spacing between two metrics prunes.
 const METRICS_PRUNE_INTERVAL_SECS: i64 = 60 * 60;
 /// Schema revision this build migrates databases up to.
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 #[derive(Clone)]
 pub struct Database {
@@ -459,9 +455,9 @@ impl Database {
             )?;
         }
         if version < 2 {
-            // Profiles the config finder adds: where they came from (only
-            // found ones are ever reported to the crowd), the share link's
-            // key to recognise a server found again, and how it fared.
+            // Profiles the config finder adds: where they came from, the
+            // share link's key to recognise a server found again, and how it
+            // fared.
             tx.execute_batch(
                 r#"
                 ALTER TABLE configs ADD COLUMN origin TEXT NOT NULL DEFAULT 'user';
@@ -480,6 +476,16 @@ impl Database {
             // works.
             tx.execute_batch(
                 "ALTER TABLE configs ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0;",
+            )?;
+        }
+        if version < 4 {
+            // Tidy up after the old crowd feature: a `crowd` origin is just a
+            // find now, and its report switch, network name and daily nonce
+            // are deleted.
+            tx.execute_batch(
+                "UPDATE configs SET origin = 'found' WHERE origin = 'crowd';
+                 DELETE FROM settings WHERE key IN
+                   ('share_results', 'crowd_net', 'crowd_nonce', 'crowd_nonce_day');",
             )?;
         }
         tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
@@ -663,7 +669,6 @@ impl Database {
                     "secret_theme_unlocked" => settings.secret_theme_unlocked = truthy(&item.1),
                     "muted_notices" => settings.muted_notices = item.1,
                     "auto_update_check" => settings.auto_update_check = truthy(&item.1),
-                    "share_results" => settings.share_results = truthy(&item.1),
                     "allow_insecure" => settings.allow_insecure = truthy(&item.1),
                     "finder_max_tier" => {
                         if let Ok(v) = item.1.parse::<u32>() {
@@ -834,10 +839,6 @@ impl Database {
             (
                 "auto_update_check",
                 if settings.auto_update_check { "1" } else { "0" },
-            ),
-            (
-                "share_results",
-                if settings.share_results { "1" } else { "0" },
             ),
             (
                 "allow_insecure",
@@ -1252,8 +1253,7 @@ impl Database {
         )
     }
 
-    /// A small named value outside [`AppSettings`] (the crowd network name,
-    /// the daily report nonce).
+    /// A small named value outside [`AppSettings`] (the fronting seed).
     pub fn get_value(&self, key: &str) -> Option<String> {
         let conn = self.lock();
         conn.query_row(
@@ -1517,7 +1517,6 @@ mod tests {
             secret_theme_unlocked: true,
             muted_notices: "startup.elevated,startup.no-elevator".into(),
             auto_update_check: false,
-            share_results: false,
             allow_insecure: true,
             finder_max_tier: 3,
             finder_keep: 12,
@@ -1750,6 +1749,40 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    #[test]
+    fn what_the_crowd_feature_left_behind_is_cleaned_up_once() {
+        let dir = std::env::temp_dir().join(format!(
+            "zeronet-crowd-leftovers-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("zeronet.db");
+        {
+            let db = Database::open(&path).unwrap();
+            db.upsert_found(&found("kkkk", "vless://k", "crowd", 80.0))
+                .unwrap();
+            for key in ["share_results", "crowd_net", "crowd_nonce", "front_seed"] {
+                db.set_value(key, "x").unwrap();
+            }
+        }
+        // Back to the schema the old build wrote, so the step runs again.
+        Connection::open(&path)
+            .unwrap()
+            .pragma_update(None, "user_version", 3)
+            .unwrap();
+        let db = Database::open(&path).unwrap();
+        let configs = db.get_configs().unwrap();
+        assert_eq!(configs[0].origin, "found");
+        for key in ["share_results", "crowd_net", "crowd_nonce"] {
+            assert_eq!(db.get_value(key), None, "{key} is dropped");
+        }
+        assert_eq!(db.get_value("front_seed").as_deref(), Some("x"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     fn found<'a>(key: &'a str, link: &'a str, origin: &'a str, delay: f64) -> FoundServer<'a> {
         FoundServer {
             remark: "Found",
@@ -1774,7 +1807,7 @@ mod tests {
             .upsert_found(&found("aaaa", "vless://a", "found", 120.0))
             .unwrap();
         let again = db
-            .upsert_found(&found("aaaa", "vless://a", "crowd", 90.0))
+            .upsert_found(&found("aaaa", "vless://a", "found", 90.0))
             .unwrap();
         assert_eq!(a, again);
         assert_ne!(a, mine);
@@ -1788,7 +1821,7 @@ mod tests {
         assert_eq!(db.found_link_key(mine), None);
 
         // A failure clears the delay; history lists only servers that worked.
-        db.upsert_found(&found("bbbb", "vless://b", "crowd", 300.0))
+        db.upsert_found(&found("bbbb", "vless://b", "found", 300.0))
             .unwrap();
         db.record_found_failure("aaaa").unwrap();
         let history = db.found_history(10).unwrap();
@@ -1854,10 +1887,10 @@ mod tests {
     #[test]
     fn named_values_round_trip_beside_the_settings() {
         let db = Database::open_temporary("values").unwrap();
-        assert_eq!(db.get_value("crowd_net"), None);
-        db.set_value("crowd_net", "asn:58224").unwrap();
-        db.set_value("crowd_net", "asn:12880").unwrap();
-        assert_eq!(db.get_value("crowd_net").as_deref(), Some("asn:12880"));
+        assert_eq!(db.get_value("front_seed"), None);
+        db.set_value("front_seed", "1").unwrap();
+        db.set_value("front_seed", "2").unwrap();
+        assert_eq!(db.get_value("front_seed").as_deref(), Some("2"));
         // Unknown keys do not disturb the settings.
         assert_eq!(db.load_settings(), AppSettings::default());
     }

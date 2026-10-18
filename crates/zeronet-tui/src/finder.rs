@@ -1,10 +1,10 @@
-//! The config finder: search the public feeds and the crowd rankings for a
-//! server that works on this network right now, the way the Android app
-//! does, and report back — anonymously — which public servers answered.
+//! The config finder: search the public feeds, starting with the verified
+//! list, for a server that works on this network right now, the way the
+//! Android app does. Nothing is sent anywhere about the result.
 //!
 //! ```text
 //! known ─ real-test, all at once, the found servers that worked here
-//!   │     before and the ones other users report working (crowd rankings)
+//!   │     before
 //!   │
 //! search ─ only when that was not enough: discovery over the public feeds
 //!          (tiered, streaming TCP → real tests), skipping what was tested
@@ -12,24 +12,19 @@
 //!
 //! Everything reaches the frame loop as a [`FinderEvent`]; the finder holds
 //! no UI state and does no database work. The user's own profiles are never
-//! part of a search and never part of a report: only servers from the public
-//! feeds or the rankings are ([`Origin`]).
+//! part of a search: only servers from the public feeds are.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use serde_json::Value;
 use tokio::sync::mpsc::UnboundedSender;
-use zero_discovery::crowd_client::{self, TestResult};
 use zero_discovery::feed::FeedSource;
 use zero_discovery::{CancellationToken, DiscoverRequest, LinkInfo, TestRequest};
 
 /// Not Cloudflare: Worker-served configs cannot reach Cloudflare addresses.
 pub const PROBE_URL: &str = "http://www.gstatic.com/generate_204";
-/// Crowd picks tested before searching.
-pub const CROWD_PICKS: usize = 12;
 /// Found servers from earlier searches tested before searching.
 pub const HISTORY_LINKS: usize = 12;
 
@@ -44,25 +39,6 @@ pub const FRONT_VARIANTS: usize = 18;
 /// The edge sample when a request carries no per-install seed (tests).
 const DEFAULT_FRONT_SEED: u64 = 0x5a52_4159_4346_524e;
 
-/// Where a found server came from.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Origin {
-    /// A public feed, found by a search (now or earlier).
-    Found,
-    /// The crowd rankings: other users got through with it.
-    Crowd,
-}
-
-impl Origin {
-    /// The value stored in the `configs.origin` column.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Origin::Found => "found",
-            Origin::Crowd => "crowd",
-        }
-    }
-}
-
 /// What a search step reports.
 #[derive(Debug, Clone, PartialEq)]
 #[allow(clippy::large_enum_variant)]
@@ -74,7 +50,6 @@ pub enum FinderEvent {
     Alive {
         info: LinkInfo,
         delay_ms: u32,
-        origin: Origin,
     },
     /// A known server that did not answer (successes come as [`FinderEvent::Alive`]).
     Failed {
@@ -105,15 +80,11 @@ pub struct FinderRequest {
     /// Share links of found servers that worked before, best first.
     pub history: Vec<String>,
     pub sources: Vec<FeedSource>,
-    /// Feed and rankings cache (`<data dir>/finder`).
+    /// Feed cache (`<data dir>/finder`).
     pub cache_dir: Option<PathBuf>,
     /// Stop after this many working servers.
     pub want_alive: usize,
     pub max_seconds: u64,
-    /// The network name to read crowd picks for (`asn:…`), or `all`.
-    pub crowd_net: String,
-    /// Use the crowd rankings at all.
-    pub use_crowd: bool,
     /// Picks which Cloudflare edges fronting tries. Fixed per install, so
     /// probe evidence builds up against the same edges, but different between
     /// installs, so not every client leans on the same few addresses.
@@ -130,8 +101,6 @@ impl Default for FinderRequest {
             cache_dir: None,
             want_alive: 3,
             max_seconds: 90,
-            crowd_net: zero_discovery::crowd::ALL_NETS.into(),
-            use_crowd: true,
             front_seed: DEFAULT_FRONT_SEED,
             allow_insecure: false,
         }
@@ -146,38 +115,13 @@ pub async fn run(request: FinderRequest, tx: Tx, cancel: CancellationToken) {
     let mut alive = 0usize;
     let mut tested: Vec<String> = Vec::new();
 
-    // ---- 1. known servers: this machine's earlier finds and the crowd's picks
-    let mut known: Vec<(String, Origin)> = request
-        .history
-        .iter()
-        .take(HISTORY_LINKS)
-        .map(|link| (link.clone(), Origin::Found))
-        .collect();
-    if request.use_crowd {
-        let cache = request
-            .cache_dir
-            .as_ref()
-            .map(|dir| dir.join("rankings.json"));
-        let rankings = tokio::select! {
-            _ = cancel.cancelled() => None,
-            r = crowd_client::fetch_rankings(cache.as_deref(), Duration::from_secs(4)) => r,
-        };
-        match rankings {
-            Some(rankings) => {
-                for pick in crowd_client::picks(&rankings, &request.crowd_net, CROWD_PICKS) {
-                    known.push((pick.link, Origin::Crowd));
-                }
-            }
-            None => {
-                let _ = tx.send(FinderEvent::Note("crowd rankings unavailable".into()));
-            }
-        }
-    }
-    // One entry per server: a crowd pick this machine already found stays "found".
-    let mut origins: HashMap<String, (String, Origin)> = HashMap::new();
-    for (link, origin) in known {
-        let key = zero_discovery::link_key(&link);
-        origins.entry(key).or_insert((link, origin));
+    // ---- 1. known servers: this machine's earlier finds
+    // One entry per server, keyed by its link key.
+    let mut known: HashMap<String, String> = HashMap::new();
+    for link in request.history.iter().take(HISTORY_LINKS) {
+        known
+            .entry(zero_discovery::link_key(link))
+            .or_insert_with(|| link.clone());
     }
     // BPB-style fronting: front the user's own history links across a bounded
     // set of Cloudflare edges and test those too, so a config whose written
@@ -185,13 +129,12 @@ pub async fn run(request: FinderRequest, tx: Tx, cancel: CancellationToken) {
     for link in
         zero_discovery::front_via_edges(&request.history, request.front_seed, 1, FRONT_VARIANTS)
     {
-        let key = zero_discovery::link_key(&link);
-        origins.entry(key).or_insert((link, Origin::Found));
+        known.entry(zero_discovery::link_key(&link)).or_insert(link);
     }
-    if !origins.is_empty() && !cancel.is_cancelled() {
+    if !known.is_empty() && !cancel.is_cancelled() {
         let _ = tx.send(FinderEvent::Stage("known".into()));
-        let links: Vec<String> = origins.values().map(|(link, _)| link.clone()).collect();
-        tested.extend(origins.keys().cloned());
+        let links: Vec<String> = known.values().cloned().collect();
+        tested.extend(known.keys().cloned());
         let test = TestRequest {
             concurrency: links.len().clamp(1, 32),
             timeout_ms: 4000,
@@ -210,7 +153,7 @@ pub async fn run(request: FinderRequest, tx: Tx, cancel: CancellationToken) {
                 continue;
             }
             let key = event["key"].as_str().unwrap_or_default().to_string();
-            let Some((link, origin)) = origins.get(&key) else {
+            let Some(link) = known.get(&key) else {
                 continue;
             };
             let delay = event["delay_ms"].as_i64().unwrap_or(-1);
@@ -225,7 +168,6 @@ pub async fn run(request: FinderRequest, tx: Tx, cancel: CancellationToken) {
             let _ = tx.send(FinderEvent::Alive {
                 info: candidate.info,
                 delay_ms: delay as u32,
-                origin: *origin,
             });
         }
     }
@@ -288,7 +230,6 @@ pub async fn run(request: FinderRequest, tx: Tx, cancel: CancellationToken) {
                     let _ = tx.send(FinderEvent::Alive {
                         info: info.into(),
                         delay_ms: event["delay_ms"].as_u64().unwrap_or(0) as u32,
-                        origin: Origin::Found,
                     });
                 }
             }
@@ -397,105 +338,15 @@ where
     result
 }
 
-/// Results worth reporting from one search, public servers only.
-#[derive(Debug, Default, Clone)]
-pub struct Tally {
-    results: HashMap<String, TestResult>,
-}
-
-impl Tally {
-    pub fn ok(&mut self, key: &str, ms: u32) {
-        self.results.insert(
-            key.into(),
-            TestResult {
-                id: key.into(),
-                ok: true,
-                ms,
-            },
-        );
-    }
-
-    /// A failure never overwrites a success seen in the same search.
-    pub fn failed(&mut self, key: &str) {
-        self.results.entry(key.into()).or_insert(TestResult {
-            id: key.into(),
-            ok: false,
-            ms: 0,
-        });
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.results.is_empty()
-    }
-
-    pub fn len(&self) -> usize {
-        self.results.len()
-    }
-
-    pub fn take(&mut self) -> Vec<TestResult> {
-        std::mem::take(&mut self.results).into_values().collect()
-    }
-}
-
-/// Send one search's results, anonymously. `through_tunnel` says the report
-/// leaves through the running tunnel, where the relay would see the VPN
-/// server rather than this network: then it is filed under `any`.
-/// Returns the network the relay filed a direct report under (`asn:…`), to
-/// read crowd picks for next time.
-pub async fn report(
-    cache_dir: Option<PathBuf>,
-    nonce: String,
-    through_tunnel: bool,
-    results: Vec<TestResult>,
-) -> Result<Option<String>, String> {
-    if results.is_empty() {
-        return Ok(None);
-    }
-    let cache = cache_dir.map(|dir| dir.join("rankings.json"));
-    let rankings = crowd_client::fetch_rankings(cache.as_deref(), Duration::from_secs(6))
-        .await
-        .ok_or("crowd rankings unavailable, so no relay is known")?;
-    let net = through_tunnel.then_some(zero_discovery::crowd::ANY_NET);
-    let answered = crowd_client::report(&rankings.relays, &nonce, net, &results, &[], &[]).await?;
-    Ok(answered.filter(|net| !through_tunnel && net.starts_with("asn:")))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_failure_does_not_undo_a_success() {
-        let mut tally = Tally::default();
-        tally.ok("a", 120);
-        tally.failed("a");
-        tally.failed("b");
-        let mut results = tally.take();
-        results.sort_by(|x, y| x.id.cmp(&y.id));
-        assert_eq!(
-            results,
-            vec![
-                TestResult {
-                    id: "a".into(),
-                    ok: true,
-                    ms: 120
-                },
-                TestResult {
-                    id: "b".into(),
-                    ok: false,
-                    ms: 0
-                },
-            ]
-        );
-        assert!(tally.is_empty());
-    }
 
     #[tokio::test]
     async fn a_search_with_nothing_to_search_ends_at_once() {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let request = FinderRequest {
             sources: Vec::new(),
-            use_crowd: false,
             max_seconds: 5,
             ..FinderRequest::default()
         };
@@ -519,7 +370,6 @@ mod tests {
             history: vec![
                 "vless://00000000-0000-0000-0000-000000000000@127.0.0.1:9?security=none#x".into(),
             ],
-            use_crowd: false,
             ..FinderRequest::default()
         };
         run(request, tx, cancel).await;

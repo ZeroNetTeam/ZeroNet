@@ -1,4 +1,4 @@
-//! The config finder against the real public feeds and crowd rankings.
+//! The config finder against the real public feeds.
 //!
 //! Needs the internet (and, from a censored network, feeds that are
 //! reachable), so it is ignored by default:
@@ -39,13 +39,9 @@ async fn the_finder_finds_a_working_server_on_this_network() {
             FinderEvent::Stage(stage) => {
                 println!("[{:>5.1}s] stage {stage}", started.elapsed().as_secs_f32())
             }
-            FinderEvent::Alive {
-                info,
-                delay_ms,
-                origin,
-            } => {
+            FinderEvent::Alive { info, delay_ms } => {
                 println!(
-                    "[{:>5.1}s] ALIVE {origin:?} {} {}/{}/{} {delay_ms} ms",
+                    "[{:>5.1}s] ALIVE {} {}/{}/{} {delay_ms} ms",
                     started.elapsed().as_secs_f32(),
                     info.name,
                     info.protocol,

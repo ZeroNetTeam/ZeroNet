@@ -1,35 +1,26 @@
 //! The config finder in the client: find a working server and connect to it,
-//! like the Android app, and share how the found servers fared.
+//! like the Android app.
 //!
 //! `F` (or F3, or the footer button) starts a search (`zeronet_tui::finder`).
-//! Known servers are tested first — earlier finds that worked, then what
-//! other users report working — and only then the public feeds. The first
-//! server that carries a real request is stored as a profile (origin
-//! `found` or `crowd`) and, unless the user is already connected, dialled at
-//! once; the search goes on for a couple of backups. When a found server's
-//! post-connect check fails, the next best found one is tried.
-//!
-//! Crowd reports name servers by their link key and carry only found
-//! profiles' results: a profile the user imported, typed or subscribed to is
-//! never part of one. They are anonymous (see `deploy/crowd-relay`) and can
-//! be turned off in Settings (Server finder → Help others connect).
+//! Known servers are tested first — earlier finds that worked — and only then
+//! the public feeds, starting with the verified list. The first server that
+//! carries a real request is stored as a profile (origin `found`) and, unless
+//! the user is already connected, dialled at once; the search goes on for a
+//! couple of backups. When a found server's post-connect check fails, the next
+//! best found one is tried. Nothing about the results leaves the machine.
 
 use std::time::Instant;
 
 use super::*;
-use zeronet_tui::finder::{self, FinderEvent, FinderRequest, Origin, Progress, Tally};
+use zeronet_tui::finder::{self, FinderEvent, FinderRequest, Progress};
 
 /// Stop searching once this many servers work.
 const WANT_ALIVE: usize = 3;
 /// Found servers tried in a row after failed checks before searching anew.
 const MAX_SWITCHES: u32 = 4;
-/// `settings` keys outside `AppSettings`.
-const CROWD_NET_KEY: &str = "crowd_net";
-/// This install's fronting seed (see [`FinderRequest::front_seed`]). Local
-/// only: it is never sent anywhere.
+/// This install's fronting seed (see [`FinderRequest::front_seed`]), a
+/// `settings` key outside `AppSettings`. Local only: it is never sent anywhere.
 const FRONT_SEED_KEY: &str = "front_seed";
-const NONCE_KEY: &str = "crowd_nonce";
-const NONCE_DAY_KEY: &str = "crowd_nonce_day";
 
 /// One running search.
 pub(crate) struct FinderSession {
@@ -50,12 +41,8 @@ pub(crate) struct FinderState {
     pub(crate) session: Option<FinderSession>,
     pub(crate) tx: tokio::sync::mpsc::UnboundedSender<FinderEvent>,
     pub(crate) rx: tokio::sync::mpsc::UnboundedReceiver<FinderEvent>,
-    /// Results of found servers awaiting a crowd report.
-    tally: Tally,
     /// Found servers dialled in a row after failed checks.
     switches: u32,
-    /// A report is being sent.
-    reporting: bool,
 }
 
 impl FinderState {
@@ -65,9 +52,7 @@ impl FinderState {
             session: None,
             tx,
             rx,
-            tally: Tally::default(),
             switches: 0,
-            reporting: false,
         }
     }
 
@@ -89,7 +74,7 @@ impl FinderState {
 }
 
 impl App<'_> {
-    /// Where the finder keeps feed and rankings caches.
+    /// Where the finder keeps its feed cache.
     fn finder_cache_dir(&self) -> Option<std::path::PathBuf> {
         self.db.path().parent().map(|dir| dir.join("finder"))
     }
@@ -131,12 +116,6 @@ impl App<'_> {
             cache_dir: self.finder_cache_dir(),
             want_alive: WANT_ALIVE,
             max_seconds: 90,
-            crowd_net: self
-                .db
-                .get_value(CROWD_NET_KEY)
-                .filter(|net| zero_discovery::crowd::valid_net(net))
-                .unwrap_or_else(|| zero_discovery::crowd::ALL_NETS.into()),
-            use_crowd: true,
             front_seed: self.front_seed(),
             allow_insecure: self.settings.allow_insecure,
         };
@@ -184,17 +163,11 @@ impl App<'_> {
                 }
             }
             FinderEvent::Failed { key } => {
-                self.finder.tally.failed(&key);
                 let _ = self.db.record_found_failure(&key);
             }
             FinderEvent::Note(note) => tracing::info!(%note, "finder"),
-            FinderEvent::Alive {
-                info,
-                delay_ms,
-                origin,
-            } => {
-                self.finder.tally.ok(&info.key, delay_ms);
-                let Some(id) = self.store_found(&info, delay_ms, origin) else {
+            FinderEvent::Alive { info, delay_ms } => {
+                let Some(id) = self.store_found(&info, delay_ms) else {
                     return true;
                 };
                 if let Some(session) = &mut self.finder.session {
@@ -286,7 +259,6 @@ impl App<'_> {
                         if alive == 1 { "" } else { "s" }
                     ));
                 }
-                self.flush_crowd_report();
             }
         }
         true
@@ -294,12 +266,7 @@ impl App<'_> {
 
     /// Build a runnable profile from a found link and store it. Returns the
     /// profile id, or `None` when the link cannot run here.
-    fn store_found(
-        &mut self,
-        info: &zero_discovery::LinkInfo,
-        delay_ms: u32,
-        origin: Origin,
-    ) -> Option<i64> {
+    fn store_found(&mut self, info: &zero_discovery::LinkInfo, delay_ms: u32) -> Option<i64> {
         let link = zero_config::parse_link(&info.link).ok()?;
         let (json, remark, protocol, address, port) = match self.profile_from_link(&link) {
             Ok(profile) => profile,
@@ -316,7 +283,7 @@ impl App<'_> {
             raw_content: &json,
             link: &info.link,
             link_key: &info.key,
-            origin: origin.as_str(),
+            origin: "found",
             delay_ms: f64::from(delay_ms),
         };
         self.db.upsert_found(&found).ok()
@@ -329,14 +296,8 @@ impl App<'_> {
             return;
         };
         match result {
-            Ok(delay) => {
-                self.finder.switches = 0;
-                self.finder
-                    .tally
-                    .ok(&key, delay.as_millis().min(u128::from(u32::MAX)) as u32);
-            }
+            Ok(_) => self.finder.switches = 0,
             Err(_) => {
-                self.finder.tally.failed(&key);
                 let _ = self.db.record_found_failure(&key);
                 self.reload_configs();
                 if !self.connection.wants_connection() {
@@ -383,76 +344,6 @@ impl App<'_> {
                 }
             }
         }
-        if !self.finder.running() {
-            self.flush_crowd_report();
-        }
-    }
-
-    /// Send what the found servers did, when the user shares results.
-    fn flush_crowd_report(&mut self) {
-        if !self.settings.share_results {
-            let _ = self.finder.tally.take();
-            return;
-        }
-        if self.finder.reporting || self.finder.tally.is_empty() {
-            return;
-        }
-        let results = self.finder.tally.take();
-        self.finder.reporting = true;
-        // In TUN mode this process's own sockets leave through the tunnel,
-        // where the relay would see the VPN server instead of this network.
-        let through_tunnel = self.stats.tun_active
-            && matches!(
-                self.stats.status,
-                ConnectionStatus::Connected | ConnectionStatus::Reconnecting
-            );
-        let nonce = self.daily_nonce();
-        let cache = self.finder_cache_dir();
-        let events = self.bg.tx.clone();
-        tokio::spawn(async move {
-            let count = results.len();
-            let result = finder::report(cache, nonce, through_tunnel, results).await;
-            let _ = events.send(app_tasks::BgEvent::CrowdReported { count, result });
-        });
-    }
-
-    /// The relay answered (or did not).
-    pub(crate) fn on_crowd_reported(
-        &mut self,
-        count: usize,
-        result: Result<Option<String>, String>,
-    ) {
-        self.finder.reporting = false;
-        match result {
-            Ok(net) => {
-                tracing::info!(count, ?net, "crowd report sent");
-                if let Some(net) = net.filter(|net| zero_discovery::crowd::valid_net(net)) {
-                    let _ = self.db.set_value(CROWD_NET_KEY, &net);
-                }
-            }
-            // Sharing must never get in the way: logged, not shown.
-            Err(error) => tracing::info!(%error, "crowd report not sent"),
-        }
-    }
-
-    /// A random value for today, sent with reports so people behind one VPN
-    /// server count as different people. New every day.
-    fn daily_nonce(&self) -> String {
-        let day = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs()
-            / 86_400;
-        if self.db.get_value(NONCE_DAY_KEY).as_deref() == Some(day.to_string().as_str()) {
-            if let Some(nonce) = self.db.get_value(NONCE_KEY).filter(|n| n.len() == 24) {
-                return nonce;
-            }
-        }
-        let bytes: [u8; 12] = rand::random();
-        let nonce: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-        let _ = self.db.set_value(NONCE_KEY, &nonce);
-        let _ = self.db.set_value(NONCE_DAY_KEY, &day.to_string());
-        nonce
     }
 
     /// The header's second line while a search runs.

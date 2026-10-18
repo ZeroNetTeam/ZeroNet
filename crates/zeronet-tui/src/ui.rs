@@ -1334,14 +1334,10 @@ impl<'a> UiRenderer<'a> {
                         Span::raw(format!(" {name}")),
                     ]))
                 } else {
-                    // Found by the finder: a public feed (◇) or others' reports (✦).
+                    // Found by the finder in a public feed (◇).
                     match cfg.origin.as_str() {
                         "found" => Cell::from(Line::from(vec![
                             Span::styled("◇ ", Style::default().fg(self.theme.info)),
-                            Span::raw(name),
-                        ])),
-                        "crowd" => Cell::from(Line::from(vec![
-                            Span::styled("✦ ", Style::default().fg(self.theme.ok)),
                             Span::raw(name),
                         ])),
                         _ => Cell::from(name),

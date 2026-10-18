@@ -526,7 +526,7 @@ struct App<'a> {
     perf: PerfMeter,
     /// Update checks and downloads; see `app_update`.
     updater: app_update::Updater,
-    /// The config finder and its crowd reports; see `app_finder`.
+    /// The config finder; see `app_finder`.
     finder: app_finder::FinderState,
     /// An installed update to start in place of this process on exit.
     relaunch: Option<std::path::PathBuf>,
@@ -4732,15 +4732,6 @@ impl App<'_> {
                 }
             }
             ComponentId::SettingCheckUpdates => self.check_for_update(true),
-            ComponentId::SettingShareResultsToggle => {
-                self.settings.share_results = !self.settings.share_results;
-                self.persist_settings();
-                self.toasts.info(if self.settings.share_results {
-                    "Sharing which found servers work, anonymously. Your own profiles are never sent."
-                } else {
-                    "No longer sharing results."
-                });
-            }
             ComponentId::SettingAllowInsecureToggle => {
                 self.settings.allow_insecure = !self.settings.allow_insecure;
                 self.persist_settings();
